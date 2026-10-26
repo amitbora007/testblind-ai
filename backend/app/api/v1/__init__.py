@@ -16,6 +16,7 @@ from app.api.v1.audit import router as audit_router
 from app.api.v1.github import router as github_router
 from app.api.v1.repositories import router as repositories_router
 from app.api.v1.codelab import router as codelab_router
+from app.api.v1.ci import router as ci_router
 
 from app.api.v1.queue import router as queue_router
 
@@ -39,5 +40,7 @@ api_router.include_router(incident_router)
 api_router.include_router(reports_router)
 api_router.include_router(insights_router)
 api_router.include_router(integrations_router)
+api_router.include_router(ci_router)
 api_router.include_router(audit_router)
+
 

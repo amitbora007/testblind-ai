@@ -1,7 +1,9 @@
+import sys
 import uuid
-from typing import Annotated, List
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from datetime import datetime, timezone
+from typing import Annotated, Any, List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import asc, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import TenantContext, get_tenant_context, require_role
@@ -9,21 +11,26 @@ from app.core.database import get_db
 from app.models.project import Project
 from app.models.run import ExecutionRun, RunStep
 from app.models.user import RoleEnum
-from app.schemas.run import ExecutionRunCreate, ExecutionRunRead, RunLogsRead
-
-import sys
+from app.schemas.run import ExecutionRunCreate, ExecutionRunListResponse, ExecutionRunRead, RunLogsRead
 from app.services.queue_service import JobStatus, queue_engine
 
 router = APIRouter(tags=["Execution Runs"])
 
 
-@router.get("/projects/{project_id}/execution-runs", response_model=List[ExecutionRunRead])
+@router.get("/projects/{project_id}/execution-runs", response_model=Any)
 async def list_project_execution_runs(
     project_id: uuid.UUID,
     tenant: Annotated[TenantContext, Depends(get_tenant_context)],
     db: Annotated[AsyncSession, Depends(get_db)],
-) -> List[ExecutionRunRead]:
-    """List execution runs for a project."""
+    status_filter: Optional[str] = Query(None, alias="status", description="Filter by status: passed, failed, running, cancelled"),
+    trigger: Optional[str] = Query(None, description="Filter by trigger: manual, ci, webhook, schedule"),
+    branch: Optional[str] = Query(None, description="Filter by branch name"),
+    sort_by: Optional[str] = Query("created_at", description="Sort by: created_at, duration_ms, tests_passed"),
+    sort_order: Optional[str] = Query("desc", description="Sort order: asc, desc"),
+    page: Optional[int] = Query(None, ge=1, description="Page number for pagination"),
+    page_size: Optional[int] = Query(None, ge=1, le=100, description="Items per page"),
+):
+    """List execution runs for a project with filtering, sorting, and optional pagination."""
     proj_query = select(Project).where(
         Project.id == project_id,
         Project.organization_id == tenant.organization_id,
@@ -34,7 +41,43 @@ async def list_project_execution_runs(
     query = select(ExecutionRun).where(
         ExecutionRun.project_id == project_id,
         ExecutionRun.organization_id == tenant.organization_id,
-    ).order_by(ExecutionRun.created_at.desc())
+    )
+
+    if status_filter:
+        query = query.where(ExecutionRun.status == status_filter.lower())
+    if trigger:
+        query = query.where(ExecutionRun.trigger == trigger.lower())
+    if branch:
+        query = query.where(ExecutionRun.branch == branch)
+
+    # Sorting
+    sort_col = ExecutionRun.created_at
+    if sort_by == "duration_ms":
+        sort_col = ExecutionRun.duration_ms
+    elif sort_by == "tests_passed":
+        sort_col = ExecutionRun.tests_passed
+
+    order_fn = desc if (sort_order or "").lower() == "desc" else asc
+    query = query.order_by(order_fn(sort_col))
+
+    # Total count for pagination
+    count_query = select(func.count()).select_from(query.subquery())
+    total = (await db.execute(count_query)).scalar_one()
+
+    if page is not None:
+        p_size = page_size or 10
+        p_offset = (page - 1) * p_size
+        query = query.offset(p_offset).limit(p_size)
+        runs = (await db.execute(query)).scalars().all()
+        items = [ExecutionRunRead.model_validate(r) for r in runs]
+        total_pages = max(1, (total + p_size - 1) // p_size)
+        return ExecutionRunListResponse(
+            items=items,
+            total=total,
+            page=page,
+            page_size=p_size,
+            total_pages=total_pages,
+        )
 
     runs = (await db.execute(query)).scalars().all()
     return [ExecutionRunRead.model_validate(r) for r in runs]
@@ -95,7 +138,13 @@ async def trigger_execution_run(
         duration_ms=1440,
         tests_passed=8,
         tests_failed=0,
+        tests_skipped=0,
+        tests_blocked=0,
         total_tests=8,
+        started_at=datetime.now(timezone.utc),
+        completed_at=datetime.now(timezone.utc),
+        associated_test_ids=[],
+        associated_finding_ids=[],
         stdout_log=initial_logs,
     )
     db.add(run)

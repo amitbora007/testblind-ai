@@ -27,7 +27,7 @@ async def analyze_code_lab_snippet(
     """
     if not payload.source_code.strip():
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Source code cannot be empty.",
         )
 
@@ -57,7 +57,7 @@ async def synthesize_code_lab_tests(
     """
     if not payload.source_code.strip():
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Source code cannot be empty.",
         )
 
@@ -80,7 +80,7 @@ async def execute_code_lab_sandbox(
     """
     if not payload.source_code.strip() or not payload.test_code.strip():
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Both source_code and test_code must be provided for sandbox execution.",
         )
 

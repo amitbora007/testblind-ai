@@ -34,9 +34,9 @@ interface Integration {
 const INITIAL_INTEGRATIONS: Integration[] = [
   {
     id: 'github',
-    name: 'GitHub',
-    category: 'vcs',
-    description: 'Post PR status checks, inline comments on surviving mutants, and verify pull requests.',
+    name: 'GitHub Actions & Check Runs',
+    category: 'ci_cd',
+    description: 'Post PR status checks, inline comments on surviving mutants, and automated regression verification gate.',
     status: 'connected',
     lastSync: '10 mins ago',
     configFields: [
@@ -47,9 +47,9 @@ const INITIAL_INTEGRATIONS: Integration[] = [
   },
   {
     id: 'gitlab',
-    name: 'GitLab CI/CD',
+    name: 'GitLab CI/CD (Planned — Unimplemented)',
     category: 'ci_cd',
-    description: 'Block merge requests when mutation score drops below target threshold or flakiness spikes.',
+    description: 'Block merge requests when mutation score drops below target threshold or flakiness spikes. (Planned post-v1.0).',
     status: 'disconnected',
     configFields: [
       { label: 'GitLab Host URL', key: 'host', placeholder: 'https://gitlab.com or internal domain', value: '' },

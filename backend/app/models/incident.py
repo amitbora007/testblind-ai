@@ -55,4 +55,4 @@ class Incident(TimestampedModel):
 
     # Relationships
     project: Mapped["Project"] = relationship("Project", back_populates="incidents")
-    generated_test: Mapped[Optional["TestCase"]] = relationship("TestCase")
+    generated_test: Mapped[Optional["TestCase"]] = relationship("TestCase", foreign_keys=[generated_test_id])

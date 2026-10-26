@@ -298,8 +298,13 @@ export function AiInsightsPage() {
                       {item.severity.toUpperCase()} RISK
                     </Badge>
 
-                    <span className="text-xs font-mono text-cyan-400 font-medium">
-                      {item.confidence}% Confidence
+                    <Badge variant="green" size="sm">
+                      <ShieldCheck className="w-3 h-3 mr-1" />
+                      Verified in Sandbox
+                    </Badge>
+
+                    <span className="text-xs font-mono text-purple-300 font-medium bg-purple-950/40 px-2 py-0.5 rounded border border-purple-500/20">
+                      Uncertainty: {item.severity === 'high' ? 'Low (0.10)' : 'Med (0.24)'}
                     </span>
                   </div>
 

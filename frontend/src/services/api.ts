@@ -545,4 +545,264 @@ export const api = {
     }
     return await res.text();
   },
+
+  // --- Phase 9: Unified Regression Protection ---
+  async getProjectTestCases(projectId: string, params?: Record<string, any>): Promise<TestCaseResult[]> {
+    try {
+      const qs = new URLSearchParams(params || {}).toString();
+      const url = `${API_BASE}/projects/${projectId}/test-cases${qs ? `?${qs}` : ''}`;
+      const res = await fetch(url, { headers: getHeaders() });
+      if (!res.ok) return [];
+      return await res.json();
+    } catch {
+      return [];
+    }
+  },
+
+  async createTestCase(projectId: string, data: any): Promise<TestCaseResult> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/test-cases`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to create test case' }));
+      throw new Error(err.detail || 'Failed to create test case');
+    }
+    return await res.json();
+  },
+
+  async getTestCase(testCaseId: string): Promise<TestCaseResult> {
+    const res = await fetch(`${API_BASE}/test-cases/${testCaseId}`, { headers: getHeaders() });
+    if (!res.ok) throw new Error('Test case not found');
+    return await res.json();
+  },
+
+  async reviewTestCase(testCaseId: string, review_status: string): Promise<TestCaseResult> {
+    const res = await fetch(`${API_BASE}/test-cases/${testCaseId}/review`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify({ review_status }),
+    });
+    if (!res.ok) throw new Error('Failed to update review status');
+    return await res.json();
+  },
+
+  async runTestCase(testCaseId: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/test-cases/${testCaseId}/run`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!res.ok) throw new Error('Test execution failed');
+    return await res.json();
+  },
+
+  async checkDuplicateTestCase(projectId: string, code: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/test-cases/duplicate-check`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ code }),
+    });
+    if (!res.ok) return { is_duplicate: false };
+    return await res.json();
+  },
+
+  async exportTestCase(testCaseId: string): Promise<string> {
+    const res = await fetch(`${API_BASE}/test-cases/${testCaseId}/export`, { headers: getHeaders() });
+    if (!res.ok) throw new Error('Export failed');
+    return await res.text();
+  },
+
+  async getProjectExecutionRuns(projectId: string, params?: Record<string, any>): Promise<any> {
+    try {
+      const qs = new URLSearchParams(params || {}).toString();
+      const url = `${API_BASE}/projects/${projectId}/execution-runs${qs ? `?${qs}` : ''}`;
+      const res = await fetch(url, { headers: getHeaders() });
+      if (!res.ok) return [];
+      return await res.json();
+    } catch {
+      return [];
+    }
+  },
+
+  async getExecutionRun(runId: string): Promise<ExecutionRunResult> {
+    const res = await fetch(`${API_BASE}/execution-runs/${runId}`, { headers: getHeaders() });
+    if (!res.ok) throw new Error('Execution run not found');
+    return await res.json();
+  },
+
+  async getExecutionRunLogs(runId: string): Promise<{ stdout_log?: string; stderr_log?: string }> {
+    const res = await fetch(`${API_BASE}/execution-runs/${runId}/logs`, { headers: getHeaders() });
+    if (!res.ok) throw new Error('Logs not found');
+    return await res.json();
+  },
+
+  async getUnifiedReport(projectId?: string): Promise<UnifiedReportResult> {
+    const qs = projectId ? `?project_id=${projectId}` : '';
+    const res = await fetch(`${API_BASE}/reports/unified${qs}`, { headers: getHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch unified report');
+    return await res.json();
+  },
+
+  async exportReport(format: 'csv' | 'json', projectId?: string): Promise<string> {
+    const qs = new URLSearchParams({ format, ...(projectId ? { project_id: projectId } : {}) }).toString();
+    const res = await fetch(`${API_BASE}/reports/export?${qs}`, { headers: getHeaders() });
+    if (!res.ok) throw new Error('Export failed');
+    return await res.text();
+  },
+
+  async getAiInsights(projectId?: string): Promise<AiInsightItem[]> {
+    try {
+      const qs = projectId ? `?project_id=${projectId}` : '';
+      const res = await fetch(`${API_BASE}/ai-insights${qs}`, { headers: getHeaders() });
+      if (!res.ok) return [];
+      return await res.json();
+    } catch {
+      return [];
+    }
+  },
+
+  async getCiContract(): Promise<CiContractResult> {
+    const res = await fetch(`${API_BASE}/ci/contract`, { headers: getHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch CI contract');
+    return await res.json();
+  },
+
+  async getGithubActionsWorkflowTemplate(): Promise<string> {
+    const res = await fetch(`${API_BASE}/ci/workflow-template`, { headers: getHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch workflow template');
+    return await res.text();
+  },
 };
+
+export interface TestCaseResult {
+  id: string;
+  project_id: string;
+  name: string;
+  file_path: string;
+  function_name: string;
+  framework: string;
+  code: string;
+  status: string;
+  mutation_kill_count: number;
+  is_flaky: boolean;
+  last_run_at?: string | null;
+  repository_name?: string | null;
+  branch?: string | null;
+  commit_sha?: string | null;
+  test_type: string;
+  source_incident_id?: string | null;
+  source_mutation_id?: string | null;
+  review_status: string;
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
+  verification_status: string;
+  evidence_hash?: string | null;
+  evidence_details?: Record<string, any>;
+  execution_history?: Array<Record<string, any>>;
+  code_hash?: string | null;
+  gap_resolved: boolean;
+  gap_details?: string | null;
+  created_at: string;
+}
+
+export interface ExecutionRunResult {
+  id: string;
+  project_id: string;
+  trigger: string;
+  trigger_label?: string | null;
+  branch: string;
+  commit_hash?: string | null;
+  status: string;
+  duration_ms: number;
+  tests_passed: number;
+  tests_failed: number;
+  tests_skipped: number;
+  tests_blocked: number;
+  total_tests: number;
+  started_at?: string | null;
+  completed_at?: string | null;
+  error_details?: string | null;
+  associated_test_ids?: string[];
+  associated_finding_ids?: string[];
+  stdout_log?: string | null;
+  stderr_log?: string | null;
+  created_at: string;
+}
+
+export interface UnifiedReportResult {
+  generated_at: string;
+  organization_id: string;
+  project_id?: string | null;
+  mutation_effectiveness: {
+    overall_score: number;
+    total_mutants: number;
+    killed_mutants: number;
+    survived_mutants: number;
+    timed_out_mutants: number;
+    operators: Record<string, { total: number; killed: number; rate: number }>;
+    surviving_mutations: Array<{
+      id: string;
+      file_path: string;
+      line_number: number;
+      operator: string;
+      original_code: string;
+      mutated_code: string;
+      missing_boundary?: string | null;
+    }>;
+  };
+  test_generation: {
+    total_tests: number;
+    verified_tests: number;
+    approved_tests: number;
+    pending_review: number;
+    rejected_tests: number;
+    mutation_killers: number;
+    incident_regressions: number;
+    resolved_gaps: number;
+  };
+  execution_history: {
+    total_runs: number;
+    passed_runs: number;
+    failed_runs: number;
+    average_duration_ms: number;
+  };
+  recurring_incidents: Array<{
+    module: string;
+    count: number;
+    verified_fixed: number;
+  }>;
+}
+
+export interface AiInsightItem {
+  id: string;
+  type: string;
+  severity: string;
+  target_file: string;
+  line_number: number;
+  title: string;
+  description: string;
+  suggested_fix?: string | null;
+  evidence: Record<string, any>;
+  uncertainty: {
+    score: number;
+    level: string;
+    factors: string[];
+  };
+  verification_state: string;
+  calibration_disclaimer: string;
+}
+
+export interface CiContractResult {
+  version: string;
+  auth_schemes: string[];
+  endpoints: Record<string, string>;
+  integrations: Array<{
+    name: string;
+    status: string;
+    auth_method: string;
+    description: string;
+    documentation: string;
+  }>;
+}
+

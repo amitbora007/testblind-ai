@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/Table';
 import { Dialog } from '@/components/ui/Dialog';
 import { DemoModeBanner } from '@/components/common/DemoModeBanner';
+import { api } from '@/services/api';
 import {
   Download,
   FileText,
@@ -128,43 +129,75 @@ export function ReportsPage() {
   const [selectedRange, setSelectedRange] = useState('7d');
   const [selectedSuite, setSelectedSuite] = useState<SuiteReport | null>(null);
   const [downloadNotice, setDownloadNotice] = useState<string | null>(null);
+  const [unifiedData, setUnifiedData] = useState<any>(null);
+  const [isExporting, setIsExporting] = useState(false);
+
+  // Fetch unified report data from live backend
+  React.useEffect(() => {
+    async function loadReport() {
+      try {
+        const data = await api.getUnifiedReport();
+        if (data) setUnifiedData(data);
+      } catch {
+        // Fallback to static mock analytics
+      }
+    }
+    loadReport();
+  }, []);
 
   const filteredSuites = MOCK_SUITES.filter(
     (s) => selectedProject === 'all' || s.project === selectedProject
   );
 
-  const handleExport = (format: 'json' | 'csv' | 'pdf') => {
-    if (format === 'json') {
-      const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(filteredSuites, null, 2));
-      const downloadAnchor = document.createElement('a');
-      downloadAnchor.setAttribute('href', dataStr);
-      downloadAnchor.setAttribute('download', `testblind-report-${selectedRange}.json`);
-      document.body.appendChild(downloadAnchor);
-      downloadAnchor.click();
-      downloadAnchor.remove();
-      setDownloadNotice('JSON report downloaded successfully.');
-    } else if (format === 'csv') {
-      const headers = 'ID,Name,Project,TestCount,MutationKillRate,LineCoverage,BranchCoverage,FlakinessScore\n';
-      const rows = filteredSuites
-        .map(
-          (s) =>
-            `${s.id},"${s.name}",${s.project},${s.testCount},${s.mutationKillRate}%,${s.lineCoverage}%,${s.branchCoverage}%,${s.flakinessScore}%`
-        )
-        .join('\n');
-      const csvStr = 'data:text/csv;charset=utf-8,' + encodeURIComponent(headers + rows);
-      const downloadAnchor = document.createElement('a');
-      downloadAnchor.setAttribute('href', csvStr);
-      downloadAnchor.setAttribute('download', `testblind-report-${selectedRange}.csv`);
-      document.body.appendChild(downloadAnchor);
-      downloadAnchor.click();
-      downloadAnchor.remove();
-      setDownloadNotice('CSV report downloaded successfully.');
-    } else {
-      setDownloadNotice('PDF report generation triggered (Demo: printable version prepared).');
-      window.print();
+  const handleExport = async (format: 'json' | 'csv' | 'pdf') => {
+    setIsExporting(true);
+    try {
+      if (format === 'csv') {
+        const csvContent = await api.exportReport('csv');
+        const blob = new Blob([csvContent], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `testblind-unified-report-${selectedRange}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+        setDownloadNotice('Official CSV report downloaded successfully.');
+      } else if (format === 'json') {
+        const jsonContent = await api.exportReport('json');
+        const blob = new Blob([jsonContent], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `testblind-unified-report-${selectedRange}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        setDownloadNotice('Official JSON report downloaded successfully.');
+      } else {
+        setDownloadNotice('Printable PDF preview generated.');
+        window.print();
+      }
+    } catch {
+      // Client-side fallback export
+      if (format === 'json') {
+        const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(unifiedData || filteredSuites, null, 2));
+        const a = document.createElement('a');
+        a.href = dataStr;
+        a.download = `testblind-report-${selectedRange}.json`;
+        a.click();
+      } else if (format === 'csv') {
+        const headers = 'ID,Name,Project,TestCount,MutationKillRate,LineCoverage,BranchCoverage,FlakinessScore\n';
+        const rows = filteredSuites.map((s) => `${s.id},"${s.name}",${s.project},${s.testCount},${s.mutationKillRate}%,${s.lineCoverage}%,${s.branchCoverage}%,${s.flakinessScore}%`).join('\n');
+        const csvStr = 'data:text/csv;charset=utf-8,' + encodeURIComponent(headers + rows);
+        const a = document.createElement('a');
+        a.href = csvStr;
+        a.download = `testblind-report-${selectedRange}.csv`;
+        a.click();
+      }
+      setDownloadNotice(`${format.toUpperCase()} export downloaded.`);
+    } finally {
+      setIsExporting(false);
+      setTimeout(() => setDownloadNotice(null), 4000);
     }
-
-    setTimeout(() => setDownloadNotice(null), 4000);
   };
 
   return (

@@ -255,3 +255,53 @@ ENTRYPOINT ["pytest"]
 - Each dual-state verification task spawns two isolated sandbox processes (State A on buggy code and State B on corrected code).
 - In production Kubernetes clusters, dual-state jobs are bound to dedicated runner nodes with ephemeral tmpfs volumes to ensure sub-second startup and teardown.
 
+---
+
+## 9. CI/CD Integration & Automated Regression Protection Operations
+
+### 9.1 GitHub Actions Secret & Workflow Deployment
+To integrate TestBlind AI regression protection into customer GitHub repositories:
+1. Generate an API runner token in the TestBlind dashboard (`Settings > Integrations > API Tokens`).
+2. Add the token to the GitHub repository secrets as `TESTBLIND_TOKEN` (`Repository Settings > Secrets and variables > Actions`).
+3. Download the workflow template from `GET /api/v1/ci/workflow-template` or commit the file directly to `.github/workflows/testblind-regression.yml`:
+```yaml
+name: TestBlind Unified Regression Protection
+
+on:
+  pull_request:
+    branches: [main, master, develop]
+  push:
+    branches: [main, master]
+
+jobs:
+  testblind-regression:
+    name: Execute Unified Regression Protection
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Trigger TestBlind Regression Scan
+        run: |
+          curl -s -X POST "${{ secrets.TESTBLIND_API_URL }}/api/v1/ci/runs" \
+            -H "X-TestBlind-Token: ${{ secrets.TESTBLIND_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "repository_url": "${{ github.repository }}",
+              "branch": "${{ github.head_ref || github.ref_name }}",
+              "commit_sha": "${{ github.sha }}",
+              "pr_number": ${{ github.event.pull_request.number || "null" }},
+              "trigger_source": "github_actions"
+            }'
+```
+
+### 9.2 CI Runner Token Authentication & Rate Limits
+- **Header:** CI requests authenticate using the `X-TestBlind-Token` header.
+- **Rate Limiting:** CI run creation endpoints enforce a tenant quota of 120 triggers/hour. Exceeding triggers return `HTTP 429 Too Many Requests`.
+- **Concurrency Bounds:** Runs beyond the tenant's parallel worker allocation are enqueued in Redis with priority scheduling.
+
+### 9.3 Planned vs Active CI Connectors
+- **Active & Certified:** GitHub Actions (`functional_and_configured`).
+- **Planned Roadmap:** GitLab CI, Jenkins Pipelines, CircleCI Orbs (clearly designated with `status: planned` in the contract API).
+
+

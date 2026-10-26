@@ -376,6 +376,33 @@ The Incident Analysis interface (`IncidentAnalysisPage.tsx`) represents incident
 - **Evidence Provenance:** Displays the 64-character SHA-256 evidence digest.
 - **Promotion Action:** "Lock & Promote to Shared Library" button adds the verified regression test to `test_cases` with provenance to the source incident.
 
+---
 
+## 12. Phase 9 Unified Regression Protection Design Specifications
 
+### 12.1 Unified Test Library Experience
+The Test Library interface (`TestCasesPage.tsx`) unifies test cases originated across Test Gap Discovery and Incident-to-Regression pipelines:
+- **Search & Multi-Dimensional Grouping:** Live instant search with real-time grouping selectors for `Repository`, `Branch`, `Commit SHA`, `Source Incident`, and `Test Type`.
+- **Duplicate Detection Warning:** When a user enters or uploads code matching an existing test logic hash, the UI renders a warning banner identifying the duplicate test case ID.
+- **Review & Approval Gateways:** Engineers and admins can approve, reject, or mark tests as pending review with clear visual status tags and reviewer audit stamps.
+- **Sandbox Test Runner:** One-click execution button dispatches tests to an isolated execution sandbox, immediately rendering live stdout/stderr logs and cryptographically sealed evidence hashes.
+- **Export Formats:** Single test `.py` file downloads and complete consolidated project regression suites.
 
+### 12.2 Execution Runs & Real-time Telemetry
+The Execution Runs interface (`ExecutionRunsPage.tsx`) provides granular execution transparency:
+- **Run Metadata:** Displays Run ID, branch, commit SHA, trigger badge (Manual, CI, Webhook), duration, and start/completion timestamps.
+- **Pass/Fail/Skip/Blocked Metrics:** Visual split-bar showing passed (emerald), failed (coral), skipped (amber), and blocked (slate) tests.
+- **Pagination & Sorting:** Server-side page navigation with configurable sorting by execution duration and submission time.
+- **Slide-Over Runner Terminal:** Full stdout/stderr execution log inspection with syntax highlighting and ANSI escape sequence parsing.
+
+### 12.3 Grounded AI Insights & Uncertainty Calibration
+The AI Insights interface (`AiInsightsPage.tsx`) displays transparent test intelligence:
+- **No Uncalibrated Confidence Claim:** Confidence percentages are replaced by empirical evidence anchors, uncertainty scores (`0.0`–`1.0`), and explicit factor breakdowns.
+- **Evidence Provenance:** Direct links to AST node locations, surviving mutant identifiers, or incident stack frames.
+- **Explicit Calibration Disclaimer:** Every card prominently displays the disclaimer: *"Heuristic uncertainty estimate based on empirical sandbox traces; not a calibrated probability."*
+
+### 12.4 CI Integration & GitHub Actions Workflow Generation
+The Integrations interface (`IntegrationsPage.tsx`) supports CI workflows:
+- **Functional CI Engine:** Full GitHub Actions workflow configuration with copyable and downloadable YAML definitions.
+- **Clear Planned Integrations:** Explicitly flags GitLab CI, Jenkins, and CircleCI as *"Planned"* to avoid misleading users.
+- **Runner Authentication:** Configured to accept `X-TestBlind-Token` header authentication for automated pull request checks.

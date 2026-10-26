@@ -1,6 +1,6 @@
 # TestBlind AI — AI-Powered Software Testing SaaS
 
-[![Status](https://img.shields.io/badge/status-phase--8--incident--regression--completed-success.svg)](https://github.com/organization/testblind-ai)
+[![Status](https://img.shields.io/badge/status-phase--9--unified--regression--completed-success.svg)](https://github.com/organization/testblind-ai)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-3776AB.svg?logo=python&logoColor=white)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![PostgreSQL](https://img.shields.io/badge/postgresql-16%20%7C%20asyncpg-4169E1.svg?logo=postgresql&logoColor=white)](https://postgresql.org)
@@ -8,7 +8,7 @@
 [![React](https://img.shields.io/badge/react-19%20%7C%20typescript-61DAFB.svg?logo=react&logoColor=black)](https://react.dev)
 [![Vite](https://img.shields.io/badge/vite-5.4-646CFF.svg?logo=vite&logoColor=white)](https://vitejs.dev)
 [![Monaco Editor](https://img.shields.io/badge/monaco--editor-VS--Dark-007ACC.svg?logo=visualstudiocode&logoColor=white)](https://microsoft.github.io/monaco-editor/)
-[![Pytest](https://img.shields.io/badge/pytest-67%2F67%20passing-brightgreen.svg?logo=pytest&logoColor=white)](https://pytest.org)
+[![Pytest](https://img.shields.io/badge/pytest-77%2F77%20passing-brightgreen.svg?logo=pytest&logoColor=white)](https://pytest.org)
 [![License](https://img.shields.io/badge/license-Proprietary-red.svg)](#)
 
 > **TestBlind AI** is a professional AI-native software testing SaaS designed to eliminate test blindspots and automate regression test synthesis. By integrating **AST-driven mutation testing**, **LLM-powered test generation**, **containerized isolated execution**, and **dual-state verification**, TestBlind AI delivers verified, executable regression tests that harden modern web and backend applications.
@@ -29,19 +29,27 @@
 - Generates reproduction tests that recreate the exact defect conditions.
 - Validates the reproduction test via **Dual-State Verification**: ensures the test fails with the matching incident signature on buggy code, and passes when the fix is applied.
 
-### 3. Dark TraceAI Studio Dashboard
+### 3. Unified Regression Protection & CI Foundation
+- **Unified Test Catalog:** Searchable library with multi-dimensional grouping by project, repository, branch, commit, and test type.
+- **Normalized Duplicate Detection:** Code hashing detects identical test logic regardless of comments or whitespace formatting.
+- **Review & Approval Gateways:** Manage test lifecycles with approval states and reviewer audit tracking.
+- **Execution Runs & Telemetry:** Full visibility into passed, failed, skipped, and blocked runs with paginated history and terminal logs.
+- **Grounded AI Intelligence:** Replaces uncalibrated confidence percentages with concrete AST/mutant evidence and quantitative uncertainty metrics.
+- **CI/CD Automation:** Extensible CI contract with functional GitHub Actions workflow template and authenticated test runner triggers (`X-TestBlind-Token`).
+
+### 4. Dark TraceAI Studio Dashboard
 - Professional, high-density dark UI inspired by the TraceAI Studio design benchmark (`references/aitool.jpeg`).
 - Real-time KPI metric cards (Test Cases Overview, Requirement Coverage, Test Scenarios Executed, AI-Driven Insights).
 - Multi-week execution status stacked bar charts and requirement coverage donut graphs.
 - Filterable recent test scenario tables with execution times, statuses, and AI confidence badges.
 
-### 4. Standalone Code Playground & Input Modalities
+### 5. Standalone Code Playground & Input Modalities
 - **Standalone Playground:** Instant multi-language Monaco code editor for testing snippets, injecting mutations, and verifying tests without connecting a repository.
 - **GitHub App & OAuth:** Connect public or private repositories with branch and PR gating.
 - **ZIP Archive Upload:** Drag-and-drop repository snapshots unpacked safely in tenant scratch volumes.
 - **Local CLI (`testblind-cli`):** On-premise execution for enterprise organizations with strict code privacy requirements.
 
-### 5. Sandboxed Untrusted Code Execution
+### 6. Sandboxed Untrusted Code Execution
 - Zero user code or generated test suites execute within the API web process.
 - Ephemeral, hardened Docker/gVisor runner containers with non-root execution (`uid=10001`), read-only root filesystems, `--network=none`, and strict CPU/memory quotas.
 

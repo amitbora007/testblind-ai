@@ -364,6 +364,33 @@ When buggy code and candidate tests are available, `IncidentAnalysisService.veri
 #### 5. Promotion to Shared Regression Catalog
 Verified tests can be promoted via `POST /api/v1/incidents/{id}/promote` directly into the permanent `test_cases` library, linking provenance to the original incident ID, commit, and verification evidence hash.
 
+### 5.5 Unified Regression Protection Architecture
+
+#### 1. Unified Test Library & Multi-Dimensional Grouping
+Combines outputs from Test Gap Discovery (AST mutation testing) and Incident-to-Regression pipelines into an immutable regression catalog:
+- **Grouping Dimensions:** Supports dynamic categorization by `repository`, `branch`, `commit_sha`, `source_incident_id`, and `test_type` (`mutation_killer`, `incident_regression`, `boundary_check`, `invariant_protection`).
+- **Normalized Duplicate Detection:** Computes whitespace- and comment-invariant SHA-256 code hashes (`RegressionService.compute_code_hash`) across existing test cases within the tenant project to prevent redundant test generation.
+- **Review & Approval Gateways:** Tests support lifecycle states (`pending_review`, `approved`, `rejected`) with authenticated reviewer audit attribution and timestamps.
+- **Cryptographic Evidence Sealing:** Execution outputs, exit codes, and timestamps are sealed into a SHA-256 evidence digest (`evidence_hash`) with historical execution telemetry stored in JSONB.
+- **Export & Portability:** Single test downloads (`.py`) and consolidated project regression suites are exportable on demand.
+
+#### 2. Execution Runs & Telemetry
+Tracks end-to-end execution runs with comprehensive telemetry:
+- **Run Metadata:** Stores run ID, branch, commit SHA, trigger source (`manual`, `github_actions`, `webhook`, `scheduled`), timestamps, duration in ms, and step logs.
+- **Metrics Breakdown:** Records tests passed, failed, skipped, and blocked counts.
+- **Finding & Test Association:** Relates execution runs to generated test cases and identified gaps.
+- **Pagination & Sorting:** Server-side sorting (`created_at`, `duration_ms`) and paginated listings.
+
+#### 3. Grounded AI Insights & Uncertainty Calibration
+- **Empirical Evidence Anchors:** Every generated insight links to concrete AST nodes, mutation IDs, or stack trace frames.
+- **Uncertainty Quantification:** Quantitative scores (`0.0`–`1.0`), factor explanations, and sandbox verification states (`verified_in_sandbox`).
+- **Calibration Disclaimers:** All insights explicitly declare that confidence values reflect heuristic risk indicators and empirical sandbox proofs, **never uncalibrated probabilistic claims**.
+
+#### 4. Extensible CI Contract & Pipeline Integration
+- **Standardized CI Contract (`/api/v1/ci/contract`):** Extensible specification for CI integrations. GitHub Actions is fully functional; GitLab CI, Jenkins, and CircleCI are clearly labeled as planned.
+- **GitHub Actions Workflow Generation (`/api/v1/ci/workflow-template`):** Auto-generates ready-to-run GitHub Actions workflow definitions configured for automated PR status checks.
+- **CI Webhook Trigger (`POST /api/v1/ci/runs`):** Accepts runner authentication via `X-TestBlind-Token` header or Bearer JWT, executes regression suites, and returns structured check summaries.
+
 ---
 
 ## 6. API Design & Communication Protocols
@@ -376,7 +403,11 @@ Verified tests can be promoted via `POST /api/v1/incidents/{id}/promote` directl
 - `/api/v1/playground/execute`: Ad-hoc code + test evaluation in sub-second sandbox.
 - `/api/v1/mutation-runs`: Initiate AST analysis and mutation gap discovery.
 - `/api/v1/incidents`: Submit incident reports, parse stack traces, trigger reproduction generation.
-- `/api/v1/test-cases`: Query test library, filter by verified status, export test files.
+- `/api/v1/test-cases`: Searchable test library, multi-field grouping, duplicate check, review approval, sandbox test runner, and single/suite exports.
+- `/api/v1/execution-runs`: Execution run telemetry, filtering, sorting, pagination, and real-time logs.
+- `/api/v1/reports`: Unified regression reporting and CSV/JSON export endpoints.
+- `/api/v1/ai-insights`: Grounded AI test intelligence with empirical evidence and calibrated uncertainty metrics.
+- `/api/v1/ci`: Extensible CI contract, GitHub Actions workflow template, and authenticated CI run triggers.
 - `/api/v1/dashboard/metrics`: Aggregated KPI counters, coverage ratios, weekly status bars.
 
 ### 6.2 Real-time WebSocket Protocol

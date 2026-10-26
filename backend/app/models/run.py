@@ -1,7 +1,8 @@
 import uuid
-from typing import List, Optional
-from sqlalchemy import ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import TimestampedModel
 
@@ -29,7 +30,14 @@ class ExecutionRun(TimestampedModel):
     duration_ms: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     tests_passed: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     tests_failed: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    tests_skipped: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    tests_blocked: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     total_tests: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_details: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    associated_test_ids: Mapped[List[str]] = mapped_column(JSONB, default=list, nullable=False)
+    associated_finding_ids: Mapped[List[str]] = mapped_column(JSONB, default=list, nullable=False)
     stdout_log: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     stderr_log: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 

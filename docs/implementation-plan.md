@@ -352,7 +352,51 @@ The development of TestBlind AI is structured into nine sequential engineering p
 
 ---
 
-### Phase 9: Hardening, Security Audits, E2E Verification & Launch (PLANNED)
+### Phase 9: Unified Regression Protection & CI Foundation (COMPLETED)
+- **Scope:**
+  - Unify the outputs of Test Gap Discovery (AST mutation testing) and Incident-to-Regression workflows into a single regression protection system.
+  - Test Library:
+    - Searchable test catalog with live filtering.
+    - Multi-dimensional grouping by project, repository, branch, commit SHA, source incident, and test type (`mutation_killer`, `incident_regression`, `boundary_check`, `invariant_protection`).
+    - Normalized duplicate code hash detection (`compute_code_hash`) across whitespace and comment variations.
+    - Test review and approval workflow (`pending_review`, `approved`, `rejected`) with authenticated reviewer audit attribution.
+    - Ephemeral sandbox test execution recording stdout, stderr, exit codes, and immutable SHA-256 evidence digests.
+    - Download and export of individual test cases (`.py`) and consolidated project regression suites.
+    - Tracking of resolved and unresolved test gaps.
+  - Execution Runs:
+    - Track execution runs with Run ID, repository, commit SHA, trigger source (`manual`, `github_actions`, `webhook`), duration, and start/completion timestamps.
+    - Granular breakdown of tests passed, failed, skipped, and blocked counts.
+    - Server-side sorting, filtering, and pagination (`ExecutionRunListResponse`).
+    - Associated test case IDs and finding links.
+  - Reporting & Grounded Insights:
+    - Unified reporting aggregating mutation effectiveness, surviving mutations, test generation stats, execution history, and recurring incidents.
+    - Direct CSV and JSON export downloads (`/api/v1/reports/export`).
+    - Grounded AI test intelligence: every insight links to concrete empirical evidence (AST node, mutant ID, or stack frame), provides quantitative uncertainty scores (`0.0`–`1.0`) and sandbox verification states (`verified_in_sandbox`), accompanied by explicit calibration disclaimers (never uncalibrated confidence claims).
+  - Extensible CI Contract & Pipeline Integration:
+    - Standardized CI contract (`/api/v1/ci/contract`) clearly distinguishing functional (GitHub Actions) from planned (GitLab CI, Jenkins, CircleCI) integrations.
+    - Automated GitHub Actions workflow template generation (`/api/v1/ci/workflow-template`).
+    - Authenticated CI runner trigger endpoint (`POST /api/v1/ci/runs`) accepting `X-TestBlind-Token` or Bearer JWT credentials.
+  - Strict Tenant Scoping & Security:
+    - All test cases, execution runs, reports, and CI triggers are strictly tenant-scoped and RBAC-controlled.
+  - Code Hygiene & Zero Warnings:
+    - Resolved Starlette 0.38+ deprecation warning by adopting RFC 9110 standard `HTTP_422_UNPROCESSABLE_CONTENT`.
+- **Acceptance Criteria:**
+  - [x] CodeLab empty input returns HTTP 422 with zero Starlette deprecation warnings (`test_codelab_warning_resolved`).
+  - [x] Duplicate test detection catches identical normalized logic regardless of whitespace and comments (`test_duplicate_test_detection`).
+  - [x] Saving a generated test with incident provenance and running it in an isolated sandbox records stdout, stderr, and evidence hash (`test_save_and_run_cataloged_test_in_sandbox`).
+  - [x] Test review and approval workflow correctly transitions states with reviewer attribution (`test_test_case_review_and_approval_workflow`).
+  - [x] Test catalog supports filtering by type/status and multi-field grouping (`test_test_cases_filtering_and_grouping`).
+  - [x] Execution runs support sorting, filtering, and pagination (`test_execution_runs_filtering_sorting_and_pagination`).
+  - [x] Unified reports aggregate mutation and incident telemetry and export valid CSV and JSON (`test_unified_reports_and_csv_json_export`).
+  - [x] AI insights provide empirical evidence, uncertainty metrics, and calibration disclaimers (`test_ai_insights_evidence_and_uncertainty`).
+  - [x] CI contract exposes functional GitHub Actions and planned systems; CI run trigger accepts `X-TestBlind-Token` (`test_ci_contract_and_run_trigger`).
+  - [x] Tenant isolation prevents cross-tenant access to test cases, execution runs, and reports (`test_tenant_isolation_unified_regression`).
+  - [x] Full test suite of 77/77 automated pytest tests passing with 100% success rate and 0 warnings.
+  - [x] Frontend builds cleanly with 0 TypeScript / bundling errors (`npm run build`).
+
+---
+
+### Phase 10: Production Hardening, Load Testing & General Availability (PLANNED)
 - **Scope:**
   - Penetration testing of container sandbox (fork bombs, privilege escalation, tmpfs exhaustion).
   - Load testing with Locust / k6 simulating 100+ concurrent sandbox executions.
@@ -362,4 +406,5 @@ The development of TestBlind AI is structured into nine sequential engineering p
   - [ ] Zero critical or high vulnerabilities in container isolation audit.
   - [ ] API maintains P95 latency < 120ms under 50 req/sec load.
   - [ ] 100% of automated E2E user flows pass reliably.
+
 
