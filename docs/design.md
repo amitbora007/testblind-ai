@@ -324,4 +324,36 @@ To prevent developer confusion between synthetic proposals and verified executio
 - **`AI Proposal (Unexecuted)` (Purple):** Generated boundary test proposals awaiting sandbox execution.
 - **`Verified Sandbox Run (Sealed)` (Emerald Green):** Confirmed test execution logs sealed with SHA-256 cryptographic provenance hashes.
 
+---
+
+## 10. Phase 7 AI Test Gap Discovery Design Specifications
+
+### 10.1 Gap Discovery Experience Architecture
+The Test Gap Discovery interface (`GapDiscoveryPage.tsx`) provides software engineers with an empirical, interactive environment to unmask test suite blindspots:
+
+1. **Live Backend vs Demo Indicator:**
+   - When connected to the live FastAPI + PostgreSQL backend and runner engine, renders an emerald status strip with a pulsing live signal and current execution run metadata.
+   - When operating offline or without projects, renders a high-contrast amber `DemoModeBanner` with an explicit notice of simulated telemetry.
+
+2. **Mutation Testing KPI Cards:**
+   - **Total AST Mutants:** Counter displaying mutants injected across ROR, AOR, LCR, and BSR operator families.
+   - **Killed by Suite:** Counter and kill rate percentage (Emerald green).
+   - **Surviving Blindspots:** High-severity counter (Coral red) highlighting unasserted invariants.
+   - **Mutation Score:** High-contrast purple metric calculating $\text{Killed} / (\text{Total} - \text{Equiv})$.
+
+3. **Operator Filter Tabs & Status Dropdown:**
+   - Tab pills for `ALL`, `ROR`, `AOR`, `LCR`, `BSR` with instant filter response.
+   - Status dropdown filtering by `All Statuses`, `Surviving Only`, `Killed Only`, `Timeout Only`, and `Equivalent Only`.
+
+4. **AST Semantic Diff Modal:**
+   - Displays original source token (`-` in red) vs mutated token (`+` in green).
+   - Dynamic explanation card explaining why the mutant survived existing tests and citing the exact missing invariant boundary.
+   - For survived mutants, allows one-click "Synthesize Killing Test" invoking LLM generation with dual-state sandbox verification.
+
+5. **Dual-State Verification Status Badging:**
+   - **`Dual-State Verified Killer` (`StatusPill status="verified"`):** Test passed Gate 1 (pristine baseline) and Gate 2 (mutant killing). Rendered with emerald border and displayed alongside an immutable SHA-256 evidence hash.
+   - **`AI Suggestion (Unexecuted)` (`StatusPill status="ai_suggested"`):** Candidate test synthesized but not yet certified through sandbox execution.
+   - **`Execution Failure` (`StatusPill status="failed"`):** Candidate test that failed on baseline unmutated code, rejecting AI hallucinations before promotion.
+
+
 

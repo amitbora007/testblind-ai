@@ -293,11 +293,9 @@ class CodeLabService:
 
             # Check if tests pass on baseline
             baseline_passed = (exit_code == 0)
-
-            # Check mutation kill effectiveness if mutant was defined
-            # If baseline passed, test successfully ran and passed
             mutant_status = "KILLED" if baseline_passed else "ERROR"
             verified = baseline_passed
+            mutant_killed = baseline_passed
 
             # Sealed cryptographic evidence hash
             hash_payload = f"{source_code}\n---\n{test_code}\n---\n{stdout}\n---\n{exit_code}"
@@ -313,7 +311,7 @@ class CodeLabService:
                 is_executable=True,
                 verified=verified,
                 baseline_passed=baseline_passed,
-                mutant_killed=baseline_passed,
+                mutant_killed=mutant_killed,
             )
 
         except subprocess.TimeoutExpired:

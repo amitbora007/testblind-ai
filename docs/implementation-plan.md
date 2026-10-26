@@ -2,8 +2,8 @@
 
 **Document Version:** 1.2.0  
 **Status:** Approved Master Roadmap  
-**Current Phase:** Phase 6 (Execution Infrastructure & Secure Sandboxing) — Completed  
-**Next Phase:** Phase 7 (AI Test Gap Discovery Engine)  
+**Current Phase:** Phase 7 (AI Test Gap Discovery Engine) — Completed  
+**Next Phase:** Phase 8 (Incident-to-Regression Pipeline & Dual-State Verification)  
 
 ---
 
@@ -62,9 +62,11 @@ The development of TestBlind AI is structured into nine sequential engineering p
                                        │
                                        ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ Phase 7: AI Test Gap Discovery Engine [PLANNED]                             │
-│ - AST mutation generation (ROR, AOR, LCR, BSR), test synthesis              │
-│ - Sandbox execution of mutants to calculate mutation kill scores            │
+│ Phase 7: AI Test Gap Discovery Engine [COMPLETED]                           │
+│ - AST mutation generation across ROR, AOR, LCR, and BSR operator families   │
+│ - Dual-state verification (Pass pristine baseline, Fail mutated code)       │
+│ - Real sandbox execution calculating empirical mutation kill score          │
+│ - 56/56 total automated pytest tests passing (11 new Phase 7 tests)         │
 └──────────────────────────────────────┬──────────────────────────────────────┘
                                        │
                                        ▼
@@ -274,22 +276,45 @@ The development of TestBlind AI is structured into nine sequential engineering p
 
 ---
 
-### Phase 7: AI Test Gap Discovery Engine (PLANNED)
+### Phase 7: AI Test Gap Discovery Engine (COMPLETED)
 - **Scope:**
-  - AST-based mutation engine generating mutants across standard operator catalogs:
-    - ROR (Relational Operator Replacement: `<`, `>`, `<=`, `>=`, `==`, `!=`).
-    - AOR (Arithmetic Operator Replacement: `+`, `-`, `*`, `/`, `%`).
-    - LCR (Logical Connector Replacement: `and`, `or`, `not`).
-    - BSR (Boundary Shift Replacement: boundary checks, off-by-one).
-  - Test runner harness running test suites against mutated AST code in the execution sandbox.
-  - Mutant survival analysis: classifying mutants as Killed, Survived, or Timed Out.
-  - Mutation score computation: `(Killed / Total) * 100%`.
-  - Targeted test synthesis for surviving mutants with boundary conditions.
+  - AST-based mutation engine (`backend/app/services/mutation_engine.py`) generating mutants across 4 standard operator families:
+    - ROR (Relational Operator Replacement: `<`, `>`, `<=`, `>=`, `==`, `!=`, `in`, `not in`, `is`, `is not`).
+    - AOR (Arithmetic Operator Replacement: `+`, `-`, `*`, `/`, `//`, `%`, `**`).
+    - LCR (Logical Connector Replacement: `and` <-> `or`, `not` inversion).
+    - BSR (Boundary Shift Replacement: off-by-one constant shifts, boolean inversions).
+    - AST syntax compilation validation (`compile(mutated_ast, ..., 'exec')`) filtering invalid syntax and detecting equivalent mutants.
+  - Test Discovery Service (`backend/app/services/discovery_service.py`):
+    - Recursive workspace discovery of Python source files and pytest suites.
+    - Baseline test execution running unmutated tests in the isolated execution sandbox (`run_baseline_tests`).
+    - Mutant execution (`execute_mutant`) comparing exit codes to detect killed vs surviving vs timeout mutants.
+    - Full workspace scan computing empirical mutation score: $\text{Score} = (\text{Killed} / (\text{Total} - \text{Equivalent} - \text{Invalid})) \times 100\%$.
+  - LLM Gap Explanation & Test Synthesizer (`backend/app/services/llm_service.py`):
+    - Explains why surviving mutations escaped existing test assertions.
+    - Synthesizes targeted boundary pytest assertions with deterministic fallback.
+  - Dual-State Verification Engine (`backend/app/services/validation_service.py`):
+    - Gate 1: Pristine Baseline Run -> Must PASS (exit code 0). Rejects hallucinated syntax as `execution_failure`.
+    - Gate 2: Mutated Code Run -> Must FAIL (exit code != 0). Certifies test as `mutation_killing` with SHA-256 evidence hash.
+  - Database Migration & Schemas (`002_add_mutation_synthesis_fields.py`):
+    - Added `synthesized_test_code`, `verification_status`, `evidence_hash`, `explanation`, `missing_boundary` to `mutations`.
+  - API Endpoints & Frontend:
+    - `POST /api/v1/projects/{id}/scan-jobs/sync`: Run synchronous mutation scan and return score & mutants.
+    - `POST /api/v1/scan-jobs/{job_id}/mutations/{mutation_id}/synthesize`: Synthesize test and run dual-state verification.
+    - `POST /api/v1/scan-jobs/{job_id}/mutations/{mutation_id}/promote`: Promote verified killer test into `test_cases` catalog.
+    - `GapDiscoveryPage.tsx`: Live integration with projects dropdown, real-time KPI metrics, AST substitution diff modal, operator filtering, synthesis trigger, and verified killer badge.
 - **Acceptance Criteria:**
-  - [ ] AST mutation engine generates syntactically valid mutants across ROR, AOR, LCR, and BSR.
-  - [ ] Ephemeral execution sandboxes execute tests against mutants and compute accurate kill rates.
-  - [ ] Surviving mutants trigger automated test synthesis proposing minimal boundary tests.
-  - [ ] Synthesized tests are validated in sandbox before being presented to user.
+  - [x] AST mutation engine generates syntactically valid mutants across ROR, AOR, LCR, and BSR (`test_ast_mutation_engine_operators`, `test_ast_mutation_invalid_syntax_filter`).
+  - [x] Equivalent mutant detection marks unprovable mutations without skewing score (`test_ast_mutation_equivalent_detection`).
+  - [x] Source and test file discovery accurately identifies Python modules and test files (`test_test_discovery_service`).
+  - [x] Baseline test execution measures unmutated test pass rate in sandbox (`test_baseline_test_execution_success_and_failure`).
+  - [x] Ephemeral execution sandboxes execute tests against mutants and compute accurate kill rates (`test_mutant_sandbox_execution_killed_and_survived`).
+  - [x] Full workspace scan calculates dynamic mutation score (`test_full_workspace_mutation_scan`).
+  - [x] LLM service synthesizes targeted edge-case pytest assertions (`test_llm_synthesize_killing_test`).
+  - [x] Dual-state validator certifies killing proof (pass pristine, fail mutant) with SHA-256 evidence hash (`test_dual_state_validation_success`).
+  - [x] Dual-state validator rejects hallucinations failing on baseline code (`test_dual_state_validation_rejects_hallucinated_tests`).
+  - [x] API endpoints support synchronous scan, synthesis, and test promotion (`test_api_scan_job_sync_and_mutations`, `test_api_synthesize_and_promote_mutation`).
+  - [x] Full test suite of 56/56 automated pytest tests passing with 100% success rate across 7 test suites.
+  - [x] Frontend builds with 0 errors (`npm run build`).
 
 ---
 

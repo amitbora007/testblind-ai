@@ -43,6 +43,11 @@ class MutationRead(BaseModel):
     mutated_code: str
     status: str
     killing_test_name: Optional[str] = None
+    synthesized_test_code: Optional[str] = None
+    verification_status: Optional[str] = None
+    evidence_hash: Optional[str] = None
+    explanation: Optional[str] = None
+    missing_boundary: Optional[str] = None
 
 
 class FindingRead(BaseModel):
@@ -56,3 +61,33 @@ class FindingRead(BaseModel):
     line_number: Optional[int] = None
     details: str
     suggested_fix: Optional[str] = None
+
+
+class SynthesizeMutationResponse(BaseModel):
+    mutation_id: uuid.UUID
+    synthesized_test_code: str
+    verification_status: str
+    verified: bool
+    baseline_passed: bool
+    mutant_killed: bool
+    evidence_hash: str
+    duration_ms: float
+    explanation: str
+    missing_boundary: str
+    recommended_action: str
+    details: str
+
+
+class PromoteMutationRequest(BaseModel):
+    name: Optional[str] = None
+    test_code: Optional[str] = None
+
+
+class PromoteMutationResponse(BaseModel):
+    test_case_id: uuid.UUID
+    project_id: uuid.UUID
+    name: str
+    file_path: str
+    status: str
+    mutation_kill_count: int
+    message: str

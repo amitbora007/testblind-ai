@@ -314,6 +314,29 @@ The AI Synthesis Engine interacts with LLM providers through a structured schema
 └────────────────────────────────────────────────────────┘
 ```
 
+### 5.3 AST Mutation Testing Engine & Dual-State Verification Architecture
+
+#### 1. AST Operator Catalog
+The mutation engine (`mutation_engine.py`) employs Python's `ast.NodeTransformer` to generate syntactically safe, semantically distinct mutations across 4 standard operator families:
+- **ROR (Relational Operator Replacement):** Inverts or shifts comparison operators (`>`, `<`, `>=`, `<=`, `==`, `!=`, `in`, `not in`, `is`, `is not`).
+- **AOR (Arithmetic Operator Replacement):** Replaces arithmetic operators with adjacent alternatives (`+`, `-`, `*`, `/`, `//`, `%`, `**`).
+- **LCR (Logical Connector Replacement):** Inverts boolean logic connectives (`and` $\leftrightarrow$ `or`, and `not` inversions).
+- **BSR (Boundary Shift Replacement):** Injects off-by-one shifts on boundary conditions (e.g. constant boundaries `+1`/`-1`, and boolean constant toggles `True` $\leftrightarrow$ `False`).
+
+#### 2. AST Validation & Equivalence Filtering
+- **Syntax Validation:** Every candidate mutant is compiled in-memory via `compile(mutated_ast, '<mutant>', 'exec')`. Mutants producing compilation errors are marked `is_valid=False`, `status="invalid"` and excluded from scoring denominators.
+- **Equivalent Mutant Detection:** Heuristic detection flags mutations that yield logically identical bytecode or unprovable conditions as `is_equivalent=True`, `status="equivalent"`.
+
+#### 3. Mutation Score Formula
+The mutation score reflects true test adequacy:
+$$\text{Mutation Score} = \left(\frac{\text{Killed Mutants}}{\text{Total Mutants} - \text{Equivalent} - \text{Invalid}}\right) \times 100\%$$
+
+#### 4. Dual-State Verification Protocol
+To eliminate AI hallucinations and ensure 100% deterministic test quality, generated tests must pass through a two-phase verification gate inside an isolated sandbox before certification:
+1. **Gate 1 — Pristine Baseline Verification:** The candidate test is executed against the pristine (unmutated) codebase. It **must PASS** (exit code 0). Tests that fail or error here are rejected as hallucinations and tagged `verification_status="execution_failure"`.
+2. **Gate 2 — Mutation Killing Verification:** The candidate test is executed against the mutated code. It **must FAIL** (exit code $\neq$ 0). A test failing on the mutant certifies that it exercises the missing invariant and kills the mutant.
+3. **Evidence Sealing:** The validated test is assigned `verification_status="mutation_killing"` and sealed with an immutable SHA-256 evidence hash incorporating stdout, exit codes, and AST token diffs. Only certified killer tests can be promoted to the regression suite.
+
 ---
 
 ## 6. API Design & Communication Protocols

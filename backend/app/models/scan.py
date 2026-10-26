@@ -108,6 +108,11 @@ class Mutation(TimestampedModel):
     mutated_code: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(30), default="survived", index=True, nullable=False)
     killing_test_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    synthesized_test_code: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    verification_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    evidence_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    explanation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    missing_boundary: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     # Relationships
     scan_job: Mapped["ScanJob"] = relationship("ScanJob", back_populates="mutations")
