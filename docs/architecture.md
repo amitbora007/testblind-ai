@@ -164,6 +164,33 @@ For enterprise teams prohibited from uploading proprietary source code to cloud 
 - Transmits only anonymized AST metadata hashes and mutation signatures to the Control Plane.
 - Zero source code bytes leave the local developer workstation.
 
+### 3.7 Background Queue & Bounded Worker Fleet Architecture
+To safely decouple untrusted execution from FastAPI request handlers:
+- **`JobQueueEngine` (`app/services/queue_service.py`):**
+  - Asynchronous background queue engine supporting configurable bounded worker capacity (`MAX_CONCURRENT_WORKERS = 4`).
+  - **Per-Tenant Concurrency Quota:** Restricts each organization to a maximum number of concurrent running executions (`MAX_TENANT_CONCURRENT_RUNS = 2`), preventing resource monopolization.
+  - **Idempotency Control:** Submissions with an `idempotency_key` deduplicate against active in-flight runs, returning the existing job record to prevent duplicate container allocations.
+  - **Job Cancellation & Tree Termination:** Calling `POST /api/v1/execution-runs/{id}/cancel` triggers an asynchronous cancellation event that issues `os.killpg(pgid, signal.SIGKILL)` on the sandbox process group, immediately releasing worker capacity.
+  - **Exponential Backoff Retries:** Transient worker/system failures trigger exponential backoff retry cycles up to `max_retries = 2`.
+  - **Graceful Lifecycle Management:** FastAPI lifespan hooks automatically drain and cancel workers on shutdown and reconcile orphaned state on startup.
+
+### 3.8 Dual-Driver Sandbox & Secret Scrubbing Specification
+Untrusted repository test execution and mutation analysis use a pluggable isolation model:
+1. **`EnvironmentScrubber`:**
+   - Strips all host environment variables matching `SECRET`, `KEY`, `TOKEN`, `PASSWORD`, `DATABASE`, `POSTGRES`, `JWT`, `AWS`, `MINIO`, `GITHUB`, `AUTH`.
+   - Passes only safe minimal baseline keys (`PATH`, `LANG`, `TMPDIR`, and runtime-safe flags).
+2. **`HardenedSubprocessDriver`:**
+   - Employs POSIX kernel limits via `resource.setrlimit` in `preexec_fn`:
+     - `RLIMIT_CPU`: Enforces hard CPU execution timeout.
+     - `RLIMIT_AS`: Virtual address space cap (512MB default).
+     - `RLIMIT_NPROC`: Limits maximum processes/threads to 64 to thwart fork bombs.
+     - `RLIMIT_FSIZE`: Caps maximum written file size to 20MB to prevent disk exhaustion.
+   - Process group isolation via `os.setsid()` ensures all subprocess children are terminated together.
+   - Output buffer protection: caps stdout/stderr to 1MB per stream to prevent memory exhaustion attacks.
+   - Ephemeral scratch isolation: workspaces (`/tmp/testblind_sandboxes/run_<uuid>`) are created disposable and deleted in guaranteed `finally:` blocks.
+3. **`DockerSandboxDriver`:**
+   - Detects Docker daemon availability. Configures ephemeral containers with `--read-only`, `--network=none`, unprivileged non-root user (`UID 10001`), and memory/CPU limits. Automatically falls back to the hardened POSIX driver when the Docker daemon is restricted or unprivileged.
+
 ---
 
 ## 4. Database Schema & Entity Architecture

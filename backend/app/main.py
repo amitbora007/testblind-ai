@@ -9,11 +9,16 @@ from app.api.v1.health import router as health_root_router
 from app.core.config import settings
 
 
+from app.services.queue_service import queue_engine
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    # Startup actions
+    # Startup actions: launch background worker fleet
+    await queue_engine.start()
     yield
-    # Shutdown actions
+    # Shutdown actions: gracefully terminate workers and active tasks
+    await queue_engine.shutdown()
 
 
 app = FastAPI(

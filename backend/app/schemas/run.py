@@ -9,6 +9,9 @@ class ExecutionRunCreate(BaseModel):
     trigger_label: Optional[str] = None
     branch: str = "main"
     commit_hash: Optional[str] = None
+    idempotency_key: Optional[str] = None
+    timeout_seconds: Optional[int] = 30
+    test_command: Optional[str] = None
 
 
 class ExecutionRunRead(BaseModel):

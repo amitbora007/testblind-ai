@@ -17,10 +17,13 @@ from app.api.v1.github import router as github_router
 from app.api.v1.repositories import router as repositories_router
 from app.api.v1.codelab import router as codelab_router
 
+from app.api.v1.queue import router as queue_router
+
 api_router = APIRouter()
 
 # Mount health at root /healthz and /readyz as well as under api_router
 api_router.include_router(health_router)
+api_router.include_router(queue_router)
 api_router.include_router(auth_router)
 api_router.include_router(org_router)
 api_router.include_router(project_router)

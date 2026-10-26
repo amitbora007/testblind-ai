@@ -32,6 +32,17 @@ class Settings(BaseSettings):
     UPLOAD_MAX_SIZE_BYTES: int = 100 * 1024 * 1024  # 100 MB
     UPLOAD_RETENTION_HOURS: int = 24
 
+    # Execution Infrastructure & Sandbox Quotas
+    MAX_CONCURRENT_WORKERS: int = 4
+    MAX_TENANT_CONCURRENT_RUNS: int = 2
+    EXECUTION_DEFAULT_TIMEOUT_SECONDS: int = 30
+    EXECUTION_WALL_TIMEOUT_SECONDS: int = 60
+    EXECUTION_MAX_MEMORY_MB: int = 512
+    EXECUTION_MAX_OUTPUT_BYTES: int = 1024 * 1024  # 1MB output stream buffer limit
+    REDIS_URL: Union[str, None] = "redis://localhost:6379/0"
+    DOCKER_HOST_SOCKET: str = "/var/run/docker.sock"
+    SANDBOX_BASE_DIR: str = "/tmp/testblind_sandboxes"
+
     # CORS Origins
     BACKEND_CORS_ORIGINS: List[str] = [
         "http://localhost:3000",

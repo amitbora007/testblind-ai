@@ -8,6 +8,8 @@ class ScanJobCreate(BaseModel):
     branch: str = "main"
     commit_hash: Optional[str] = None
     trigger: str = "manual"
+    idempotency_key: Optional[str] = None
+    timeout_seconds: Optional[int] = 30
 
 
 class ScanJobRead(BaseModel):

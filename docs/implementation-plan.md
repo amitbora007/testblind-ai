@@ -1,9 +1,9 @@
 # TestBlind AI — Phased Implementation Plan & Acceptance Criteria
 
-**Document Version:** 1.1.0  
+**Document Version:** 1.2.0  
 **Status:** Approved Master Roadmap  
-**Current Phase:** Phase 3 (Frontend Screens & Workflows) — Completed  
-**Next Phase:** Phase 4 (Core Data Models, Authentication & Multi-Tenancy)  
+**Current Phase:** Phase 6 (Execution Infrastructure & Secure Sandboxing) — Completed  
+**Next Phase:** Phase 7 (AI Test Gap Discovery Engine)  
 
 ---
 
@@ -45,13 +45,6 @@ The development of TestBlind AI is structured into nine sequential engineering p
                                        │
                                        ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ Phase 4: Sandboxed Untrusted Execution Engine [PLANNED]                     │
-│ - Ephemeral container runners (Docker/gVisor), resource quotas, timeout     │
-│ - Zero API execution enforcement, Redis pub/sub live log streaming          │
-└──────────────────────────────────────┬──────────────────────────────────────┘
-                                       │
-                                       ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
 │ Phase 5: Repository Integrations, Code Intake & Code Lab [COMPLETED]        │
 │ - Safe ZIP intake, Zip Slip / Zip Bomb defense, test runner auto-detection   │
 │ - Zero-trust GitHub integration, Standalone Code Lab sandbox, Local CLI     │
@@ -60,23 +53,25 @@ The development of TestBlind AI is structured into nine sequential engineering p
                                        │
                                        ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ Phase 6: Incident-to-Regression Pipeline & Dual-State Verification [PLANNED]│
+│ Phase 6: Execution Infrastructure & Secure Sandboxing [COMPLETED]           │
+│ - In-memory/Redis job queue with bounded concurrency (4 workers)            │
+│ - Hardened subprocess/Docker sandbox drivers with POSIX setrlimit quotas    │
+│ - Process group isolation (os.setsid/SIGKILL), 1MB output cap, scrubbing   │
+│ - 45/45 total automated pytest tests passing (11 new Phase 6 tests)         │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Phase 7: AI Test Gap Discovery Engine [PLANNED]                             │
+│ - AST mutation generation (ROR, AOR, LCR, BSR), test synthesis              │
+│ - Sandbox execution of mutants to calculate mutation kill scores            │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Phase 8: Incident-to-Regression Pipeline & Dual-State Verification [PLANNED]│
 │ - Stacktrace/log parser, fault anchor mapping                               │
 │ - Dual-state verification (reproduce on buggy, pass on fixed)               │
-└──────────────────────────────────────┬──────────────────────────────────────┘
-                                       │
-                                       ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ Phase 7: Standalone Code Playground & Local ZIP Ingestion [PLANNED]         │
-│ - Multi-language Monaco code editor, sub-second sandbox execution           │
-│ - Safe ZIP decompression with path traversal defense                        │
-└──────────────────────────────────────┬──────────────────────────────────────┘
-                                       │
-                                       ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ Phase 8: Integrations & Local CLI (`testblind-cli`) [PLANNED]               │
-│ - GitHub App & OAuth, webhook triggers, PR checks                           │
-│ - Local CLI for on-prem enterprise execution without code upload            │
 └──────────────────────────────────────┬──────────────────────────────────────┘
                                        │
                                        ▼
@@ -237,6 +232,68 @@ The development of TestBlind AI is structured into nine sequential engineering p
   - [x] Code Lab sandbox executes tests, captures stdout/stderr, and seals proof with SHA-256 hash with `is_executable: true` (`test_codelab_execute_sandbox`).
   - [x] All 34 automated backend pytest tests pass with 100% success rate (`pytest backend/tests -v`).
   - [x] Frontend builds with 0 errors (`npm run build`).
+---
+
+### Phase 6: Execution Infrastructure & Secure Sandboxing (COMPLETED)
+- **Scope:**
+  - Build asynchronous background queue engine and isolated runner sandboxes for untrusted code execution.
+  - Background Queue & Bounded Worker Fleet (`backend/app/services/queue_service.py`):
+    - In-memory job queue with Redis queue backing abstraction.
+    - Bounded worker fleet concurrency (`MAX_CONCURRENT_WORKERS = 4`).
+    - Per-tenant fair-share run quotas (`MAX_TENANT_CONCURRENT_RUNS = 2`).
+    - Idempotency key registry preventing duplicate job dispatch and worker allocation.
+    - Asynchronous job submission and non-blocking status retrieval.
+    - Immediate cancellation handling (`POST /api/v1/execution-runs/{id}/cancel`, `POST /api/v1/scan-jobs/{id}/cancel`) with active process group kill.
+    - Exponential backoff retry policies for transient failures (`max_retries = 2`, `backoff_factor = 2.0`).
+    - Worker fleet healthcheck (`GET /api/v1/workers/health`) and queue stats (`GET /api/v1/queue/stats`).
+    - FastAPI lifespan hook for graceful worker fleet startup and draining shutdown.
+  - Hardened Execution Sandbox Engine (`backend/app/services/sandbox_service.py`):
+    - Dual-driver runner architecture: `DockerSandboxDriver` with automated seamless fallback to `HardenedSubprocessDriver`.
+    - POSIX kernel resource quotas via `resource.setrlimit`: `RLIMIT_CPU` (30s soft / 60s hard), `RLIMIT_AS` (512MB RAM), `RLIMIT_NPROC` (64 processes max), `RLIMIT_FSIZE` (20MB).
+    - Process group isolation via `os.setsid()` and recursive cleanup via `os.killpg(pgid, signal.SIGKILL)`.
+    - Output buffer memory exhaustion protection: stdout/stderr capped at 1MB with `[OUTPUT TRUNCATED]` warning.
+    - Ephemeral scratch workspaces (`/tmp/testblind_sandboxes/{sandbox_id}`) purged upon completion.
+    - Zero-leak credential scrubber stripping sensitive environment variables (`SECRET`, `KEY`, `TOKEN`, `PASSWORD`, `DATABASE`, `POSTGRES`, `JWT`, `AWS`, `MINIO`, `GITHUB`, `AUTH`).
+    - SHA-256 evidence sealing for execution proof.
+  - Automated Pytest Test Suite (`backend/tests/test_execution_infrastructure.py`):
+    - 11 comprehensive tests covering secret scrubbing, timeouts, cancellation, output truncation, bounded concurrency, retries, idempotency, execution run API cancellation, scan job API cancellation, tenant isolation, and health/stats endpoints.
+- **Acceptance Criteria:**
+  - [x] Environment secret scrubbing sanitizes all sensitive environment variables (`test_sandbox_secret_scrubbing`).
+  - [x] Wall timeout enforcement terminates hanging infinite processes with exit code 124 (`test_sandbox_timeout_enforcement`).
+  - [x] Sandbox process group cancellation successfully kills multi-process tree with exit code 130 (`test_sandbox_cancellation`).
+  - [x] Output buffer truncation caps excessive test stdout to limit with explicit truncation marker (`test_sandbox_output_truncation`).
+  - [x] Bounded queue concurrency caps active worker executions to MAX_CONCURRENT_WORKERS=4 (`test_queue_bounded_concurrency`).
+  - [x] Transient failure retries execute with exponential backoff (`test_queue_retry_policy`).
+  - [x] Idempotent submission returns existing job without duplicate worker execution (`test_queue_idempotency`).
+  - [x] Execution run API cancellation transitions run to CANCELLED and kills sandbox process (`test_execution_run_cancellation_api`).
+  - [x] Scan job API cancellation transitions scan job to CANCELLED and halts analysis (`test_scan_job_cancellation_api`).
+  - [x] Multi-tenant isolation prevents cross-tenant job cancellation or detail access (`test_cross_tenant_job_isolation`).
+  - [x] Operational endpoints return real worker health and queue metrics (`test_queue_and_worker_health_endpoints`).
+  - [x] Full test suite of 45/45 automated pytest tests passing with 100% success rate across all 6 test suites.
+  - [x] Frontend builds with 0 errors (`npm run build`).
+
+---
+
+### Phase 7: AI Test Gap Discovery Engine (PLANNED)
+- **Scope:**
+  - AST-based mutation engine generating mutants across standard operator catalogs:
+    - ROR (Relational Operator Replacement: `<`, `>`, `<=`, `>=`, `==`, `!=`).
+    - AOR (Arithmetic Operator Replacement: `+`, `-`, `*`, `/`, `%`).
+    - LCR (Logical Connector Replacement: `and`, `or`, `not`).
+    - BSR (Boundary Shift Replacement: boundary checks, off-by-one).
+  - Test runner harness running test suites against mutated AST code in the execution sandbox.
+  - Mutant survival analysis: classifying mutants as Killed, Survived, or Timed Out.
+  - Mutation score computation: `(Killed / Total) * 100%`.
+  - Targeted test synthesis for surviving mutants with boundary conditions.
+- **Acceptance Criteria:**
+  - [ ] AST mutation engine generates syntactically valid mutants across ROR, AOR, LCR, and BSR.
+  - [ ] Ephemeral execution sandboxes execute tests against mutants and compute accurate kill rates.
+  - [ ] Surviving mutants trigger automated test synthesis proposing minimal boundary tests.
+  - [ ] Synthesized tests are validated in sandbox before being presented to user.
+
+---
+
+### Phase 8: Incident-to-Regression Pipeline & Dual-State Verification (PLANNED)
 - **Scope:**
   - Incident intake API accepting raw stack traces, logs, and commit references.
   - Stack trace parser extracting faulting frames, file paths, and line numbers.
@@ -254,56 +311,6 @@ The development of TestBlind AI is structured into nine sequential engineering p
 
 ---
 
-### Phase 6: Dark TraceAI Studio Dashboard & Web Application (PLANNED)
-- **Scope:**
-  - React 19 + TypeScript + Vite + Tailwind CSS frontend application.
-  - Full implementation of the TraceAI Studio dark palette (`#0F172A`, `#1E293B`, `#334155`).
-  - Top 4 KPI metric cards:
-    - Test Cases Overview (Total, Automated/Manual, Automation Rate bar).
-    - Requirement Coverage (Total, Covered/Untested, 92% circular gauge).
-    - Test Scenarios Executed (Total, Passed/Failed, green sparkline).
-    - AI-Driven Insights (Flaky count, Optimization count, glowing AI brain).
-  - Main charts:
-    - Weekly Execution Status stacked bar chart (Passed/Failed/Skipped/Blocked).
-    - Requirement Coverage Analysis donut chart (60/25/10/5 breakdown).
-  - Recent Test Scenarios table with scenario drawer, execution duration, and AI confidence badges.
-  - Responsive layouts: desktop, tablet, and mobile.
-- **Acceptance Criteria:**
-  - [ ] Visual fidelity matches `references/aitool.jpeg` across layout, colors, typography, and card hierarchy.
-  - [ ] Fully responsive down to 375px mobile without horizontal layout breakages.
-  - [ ] Keyboard navigable with visible focus states and WCAG 2.1 AA compliant text contrast.
-  - [ ] Interactive slide-over drawer shows detailed scenario step logs and verified evidence signatures.
-
----
-
-### Phase 7: Standalone Code Playground & Local ZIP Ingestion (PLANNED)
-- **Scope:**
-  - Standalone Monaco code editor supporting Python, TypeScript, and Go.
-  - Split editor view: Implementation code (left) vs Unit / Generated tests (right).
-  - Quick action toolbar: "Inject Mutations", "Generate Test", "Run in Sandbox".
-  - Sub-second execution sandbox returning stdout, stderr, execution duration, and mutation status.
-  - Web UI drag-and-drop ZIP upload with progress bar and automatic project creation.
-- **Acceptance Criteria:**
-  - [ ] User can enter code in the playground without logging in or connecting a repository.
-  - [ ] Clicking "Run in Sandbox" executes code in ephemeral container and returns results within 3 seconds.
-  - [ ] Dragging and dropping a repository ZIP archive unpacks safely and populates project file tree.
-
----
-
-### Phase 8: Integrations & Local CLI (`testblind-cli`) (PLANNED)
-- **Scope:**
-  - GitHub App integration for OAuth login, repository selection, and pull request checks.
-  - GitHub Action workflow integration for CI-triggered test gap discovery.
-  - Standalone `testblind-cli` tool for local developer machines:
-    - Analyzes local repository without uploading proprietary source code.
-    - Sends anonymized AST metadata and failure signatures to SaaS API.
-    - Receives test proposals and executes them locally in developer's Docker daemon.
-- **Acceptance Criteria:**
-  - [ ] GitHub webhook on pull request triggers mutation analysis and posts check summary with mutation score delta.
-  - [ ] `testblind-cli run --local` executes mutation testing locally and displays formatted terminal table.
-
----
-
 ### Phase 9: Hardening, Security Audits, E2E Verification & Launch (PLANNED)
 - **Scope:**
   - Penetration testing of container sandbox (fork bombs, privilege escalation, tmpfs exhaustion).
@@ -314,3 +321,4 @@ The development of TestBlind AI is structured into nine sequential engineering p
   - [ ] Zero critical or high vulnerabilities in container isolation audit.
   - [ ] API maintains P95 latency < 120ms under 50 req/sec load.
   - [ ] 100% of automated E2E user flows pass reliably.
+

@@ -100,6 +100,14 @@ SANDBOX_MAX_CPU_CORES=1.0
 SANDBOX_IMAGE_PYTHON=testblind-runner-python:3.12
 SANDBOX_IMAGE_NODE=testblind-runner-node:20
 
+# Execution Worker Fleet & Concurrency Quotas
+MAX_CONCURRENT_WORKERS=4                 # Bounded worker concurrency
+MAX_TENANT_CONCURRENT_RUNS=2             # Per-tenant active run limit
+EXECUTION_DEFAULT_TIMEOUT_SECONDS=30     # Subprocess wall-clock limit
+EXECUTION_MAX_MEMORY_MB=512              # POSIX RLIMIT_AS address space limit
+EXECUTION_MAX_OUTPUT_BYTES=1048576       # 1MB stdout/stderr buffer cap
+SANDBOX_BASE_DIR=/tmp/testblind_sandboxes
+
 # GitHub App / OAuth Integration
 GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=

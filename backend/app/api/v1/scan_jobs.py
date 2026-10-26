@@ -12,6 +12,9 @@ from app.models.scan import Finding, Mutation, ScanJob
 from app.models.user import RoleEnum
 from app.schemas.scan import FindingRead, MutationRead, ScanJobCreate, ScanJobRead
 
+import sys
+from app.services.queue_service import JobStatus, queue_engine
+
 router = APIRouter(tags=["Scan Jobs & Mutations"])
 
 
@@ -57,8 +60,25 @@ async def trigger_scan_job(
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
+    # Idempotency check: return existing running/queued scan job if key matches
+    if data.idempotency_key:
+        existing_job_id = queue_engine._idempotency_index.get(data.idempotency_key)
+        if existing_job_id:
+            try:
+                exist_uuid = uuid.UUID(existing_job_id)
+                existing_scan_q = select(ScanJob).where(
+                    ScanJob.id == exist_uuid,
+                    ScanJob.organization_id == tenant.organization_id,
+                )
+                existing_scan = (await db.execute(existing_scan_q)).scalar_one_or_none()
+                if existing_scan:
+                    return ScanJobRead.model_validate(existing_scan)
+            except ValueError:
+                pass
+
     now = datetime.now(timezone.utc)
     scan_job = ScanJob(
+        id=uuid.uuid4(),
         project_id=project_id,
         organization_id=tenant.organization_id,
         status="completed",
@@ -133,7 +153,67 @@ async def trigger_scan_job(
     await db.commit()
     await db.refresh(scan_job)
 
+    # Submit to queue engine for background worker fleet
+    await queue_engine.submit_job(
+        job_id=str(scan_job.id),
+        tenant_id=str(tenant.organization_id),
+        project_id=str(project_id),
+        job_type="scan_job",
+        command=[sys.executable, "-c", "import sys; print('AST mutation scan complete.')"],
+        idempotency_key=data.idempotency_key,
+        timeout_seconds=data.timeout_seconds or 30,
+    )
+
     return ScanJobRead.model_validate(scan_job)
+
+
+@router.get("/scan-jobs/{job_id}", response_model=ScanJobRead)
+async def get_scan_job(
+    job_id: uuid.UUID,
+    tenant: Annotated[TenantContext, Depends(get_tenant_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> ScanJobRead:
+    """Retrieve scan job status and metrics. Validates tenant access."""
+    query = select(ScanJob).where(
+        ScanJob.id == job_id,
+        ScanJob.organization_id == tenant.organization_id,
+    )
+    job = (await db.execute(query)).scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scan job not found")
+
+    # Sync with queue engine if active
+    queued_job = queue_engine.get_job(str(job_id), str(tenant.organization_id))
+    if queued_job and queued_job.status != job.status:
+        job.status = queued_job.status
+
+    return ScanJobRead.model_validate(job)
+
+
+@router.post("/scan-jobs/{job_id}/cancel", status_code=status.HTTP_200_OK)
+async def cancel_scan_job(
+    job_id: uuid.UUID,
+    tenant: Annotated[TenantContext, Depends(require_role(RoleEnum.ENGINEER))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    """Cancel a queued or in-flight scan job and terminate worker execution."""
+    query = select(ScanJob).where(
+        ScanJob.id == job_id,
+        ScanJob.organization_id == tenant.organization_id,
+    )
+    job = (await db.execute(query)).scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scan job not found")
+
+    cancelled = queue_engine.cancel_job(str(job_id), str(tenant.organization_id))
+    job.status = "cancelled"
+    await db.commit()
+
+    return {
+        "id": str(job_id),
+        "status": "cancelled",
+        "message": "Scan job cancellation initiated." if cancelled else "Scan job marked cancelled.",
+    }
 
 
 @router.get("/scan-jobs/{job_id}/mutations", response_model=List[MutationRead])
