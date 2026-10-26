@@ -152,6 +152,19 @@ async def test_incident_intake_and_dual_state_verification(client: AsyncClient, 
     )
     proj_id = proj_res.json()["id"]
 
+    buggy_code = (
+        "def calculate(days_active: int, billing_cycle_days: int, total_cost: float = 49.0):\n"
+        "    daily_rate = total_cost / billing_cycle_days\n"
+        "    return daily_rate * days_active\n"
+    )
+    corrected_code = (
+        "def calculate(days_active: int, billing_cycle_days: int, total_cost: float = 49.0):\n"
+        "    if billing_cycle_days <= 0:\n"
+        "        return 0.0\n"
+        "    daily_rate = total_cost / billing_cycle_days\n"
+        "    return daily_rate * days_active\n"
+    )
+
     # Intake incident
     inc_res = await client.post(
         f"/api/v1/projects/{proj_id}/incidents",
@@ -164,6 +177,8 @@ async def test_incident_intake_and_dual_state_verification(client: AsyncClient, 
                 '    daily_rate = total_cost / billing_cycle_days\n'
                 'ZeroDivisionError: float division by zero'
             ),
+            "buggy_code": buggy_code,
+            "corrected_code": corrected_code,
         },
         headers=tenant_a["headers"],
     )
@@ -172,20 +187,21 @@ async def test_incident_intake_and_dual_state_verification(client: AsyncClient, 
     inc_id = inc_data["id"]
     assert inc_data["fault_module"] == "src/billing/prorate.py"
     assert inc_data["fault_line"] == 76
-    assert inc_data["verification_state"] == "unverified"
+    assert inc_data["verification_state"] == "test_generated"
 
     # Trigger dual-state verification
     verify_res = await client.post(
         f"/api/v1/incidents/{inc_id}/verify",
-        json={"buggy_commit": "a891f2c", "fixed_commit": "c47012b"},
+        json={"fixed_commit": "c47012b"},
         headers=tenant_a["headers"],
     )
     assert verify_res.status_code == 200
     verify_data = verify_res.json()
-    assert verify_data["verification_state"] == "verified_on_fixed"
+    assert verify_data["verification_state"] == "verified_fixed"
     assert verify_data["reproduction_proven"] is True
-    assert "REPRODUCED EXPECTED RED" in verify_data["state_a_result"]
-    assert "FIX VERIFIED EXPECTED GREEN" in verify_data["state_b_result"]
+    assert verify_data["fix_proven"] is True
+    assert "State A RED" in verify_data["state_a_result"]
+    assert "State B GREEN" in verify_data["state_b_result"]
 
 
 @pytest.mark.asyncio

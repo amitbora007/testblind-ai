@@ -355,5 +355,27 @@ The Test Gap Discovery interface (`GapDiscoveryPage.tsx`) provides software engi
    - **`AI Suggestion (Unexecuted)` (`StatusPill status="ai_suggested"`):** Candidate test synthesized but not yet certified through sandbox execution.
    - **`Execution Failure` (`StatusPill status="failed"`):** Candidate test that failed on baseline unmutated code, rejecting AI hallucinations before promotion.
 
+---
+
+## 11. Phase 8 Incident-to-Regression Design Specifications
+
+### 11.1 Incident Lifecycle State Machine
+The Incident Analysis interface (`IncidentAnalysisPage.tsx`) represents incident progress through 8 explicit lifecycle states:
+1. **`Submitted` (Slate Pill):** Incident ingested and scrubbed; awaiting analysis.
+2. **`Analyzing` (Blue Animated Pill):** Parsing traceback frames and evaluating context adequacy.
+3. **`Needs More Information` (Amber Alert Pill):** Source code or reproduction details are missing. Displays an amber callout banner detailing the exact missing context without fabricating ungrounded claims.
+4. **`Test Generated` (Purple Pill):** Candidate pytest assertion formulated with explicit assumptions and uncertainty rating.
+5. **`Reproduction Verified` (Coral Red Pill):** Candidate test executed against buggy code in an isolated sandbox and failed, reproducing the defect (`State A RED`).
+6. **`Fix Verified` (Emerald Pill):** Candidate test executed against corrected code and passed cleanly (`State B GREEN`), establishing a dual-state proof.
+7. **`Failed to Reproduce` (Rose Pill):** Candidate test unexpectedly passed on buggy code or failed with an unrelated syntax error.
+8. **`Execution Unavailable` (Gray Pill):** Sandbox execution timed out or container runtime was unavailable.
+
+### 11.2 Dual-State Verification Console
+- **State A Output Panel:** Displays real stdout and stderr with red border and `XCircle` icon confirming reproduction.
+- **State B Output Panel:** Displays real stdout and stderr with emerald border and `CheckCircle2` icon confirming fix.
+- **Evidence Provenance:** Displays the 64-character SHA-256 evidence digest.
+- **Promotion Action:** "Lock & Promote to Shared Library" button adds the verified regression test to `test_cases` with provenance to the source incident.
+
+
 
 

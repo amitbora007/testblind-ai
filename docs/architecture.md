@@ -337,6 +337,33 @@ To eliminate AI hallucinations and ensure 100% deterministic test quality, gener
 2. **Gate 2 — Mutation Killing Verification:** The candidate test is executed against the mutated code. It **must FAIL** (exit code $\neq$ 0). A test failing on the mutant certifies that it exercises the missing invariant and kills the mutant.
 3. **Evidence Sealing:** The validated test is assigned `verification_status="mutation_killing"` and sealed with an immutable SHA-256 evidence hash incorporating stdout, exit codes, and AST token diffs. Only certified killer tests can be promoted to the regression suite.
 
+### 5.4 Incident-to-Regression Pipeline & Dual-State Verification Architecture
+
+#### 1. Ingestion & Multi-Layer Secret/PII Sanitization
+The incident intake subsystem sanitizes all unstructured log and stack trace payloads before database storage or LLM prompt dispatch (`app/core/sanitization.py`):
+- **Credential Stripping:** Automatically matches and redacts AWS access keys (`AKIA...`), GitHub/GitLab tokens (`ghp_...`, `glpat-...`), TestBlind tokens (`tb_live_...`), and Bearer JWTs (`eyJ...`).
+- **Database Connection URIs:** Strips plaintext passwords from connection strings (`postgresql://user:pass@host/db`).
+- **PII Scrubbing:** Replaces credit card patterns and email addresses with high-visibility redaction markers (`[REDACTED_...]`).
+
+#### 2. Traceback Parsing & Fault Anchor Mapping
+The parser decomposes Python and Node.js tracebacks into structured `StackFrame` objects:
+- Identifies the root fault anchor (deepest application frame, file path, line number, and function).
+- Extracts exception type (`ZeroDivisionError`, `KeyError`, `IndexError`, `TypeError`) and failure message.
+
+#### 3. Context Adequacy & Anti-Hallucination Guardrails
+To prevent synthetic hallucinations:
+- If source code for the faulting module is missing, the incident is assigned status `needs_more_info`. The engine explicitly catalogs missing context in `missing_details` and assigns high uncertainty (`uncertainty_score >= 0.85`).
+- The system **never claims** to have reproduced an incident or synthesized a test without verifiable source code.
+
+#### 4. Dual-State Sandbox Verification Protocol
+When buggy code and candidate tests are available, `IncidentAnalysisService.verify_dual_state` executes a two-state proof in an airgapped sandbox:
+- **State A (Buggy Codebase):** The candidate test **MUST FAIL** (`exit_code != 0`), reproducing the reported exception signature. If the test passes on buggy code, it transitions to `failed_to_reproduce` with `reproduction_proven=False`.
+- **State B (Corrected Codebase):** When fix code is supplied, the test **MUST PASS** (`exit_code == 0`) cleanly. If it passes, the incident transitions to `verified_fixed` with `fix_proven=True`.
+- **Evidence Sealing:** Dual-state execution stdout, stderr, and exit codes are hashed into an immutable 64-character SHA-256 evidence digest.
+
+#### 5. Promotion to Shared Regression Catalog
+Verified tests can be promoted via `POST /api/v1/incidents/{id}/promote` directly into the permanent `test_cases` library, linking provenance to the original incident ID, commit, and verification evidence hash.
+
 ---
 
 ## 6. API Design & Communication Protocols

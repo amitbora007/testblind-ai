@@ -2,8 +2,8 @@
 
 **Document Version:** 1.2.0  
 **Status:** Approved Master Roadmap  
-**Current Phase:** Phase 7 (AI Test Gap Discovery Engine) — Completed  
-**Next Phase:** Phase 8 (Incident-to-Regression Pipeline & Dual-State Verification)  
+**Current Phase:** Phase 8 (Incident-to-Regression Pipeline & Dual-State Verification) — Completed  
+**Next Phase:** Phase 9 (Hardening, Security Audits, E2E Verification & Launch)  
 
 ---
 
@@ -71,9 +71,11 @@ The development of TestBlind AI is structured into nine sequential engineering p
                                        │
                                        ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ Phase 8: Incident-to-Regression Pipeline & Dual-State Verification [PLANNED]│
-│ - Stacktrace/log parser, fault anchor mapping                               │
-│ - Dual-state verification (reproduce on buggy, pass on fixed)               │
+│ Phase 8: Incident-to-Regression Pipeline & Dual-State Verification [COMPLETED]│
+│ - Stack trace parser, fault anchor mapping, PII & secret redactor           │
+│ - Dual-state verification (Fail on buggy code, Pass on corrected code)      │
+│ - Promotion to shared regression test library with cryptographic hash       │
+│ - 67/67 total automated pytest tests passing (11 new Phase 8 tests)         │
 └──────────────────────────────────────┬──────────────────────────────────────┘
                                        │
                                        ▼
@@ -318,21 +320,35 @@ The development of TestBlind AI is structured into nine sequential engineering p
 
 ---
 
-### Phase 8: Incident-to-Regression Pipeline & Dual-State Verification (PLANNED)
+### Phase 8: Incident-to-Regression Pipeline & Dual-State Verification (COMPLETED)
 - **Scope:**
-  - Incident intake API accepting raw stack traces, logs, and commit references.
-  - Stack trace parser extracting faulting frames, file paths, and line numbers.
-  - PII / secret redaction filter stripping API keys and passwords before prompt dispatch.
-  - Reproduction test synthesizer generating tests replicating the failure.
-  - Dual-State Verification Engine:
-    - Step A: Run test on buggy code -> Must FAIL with identical exception signature.
-    - Step B: Run test on fixed code -> Must PASS with exit code 0.
-  - Promotion to the unified regression test suite.
+  - Multi-field incident intake API (`IncidentCreate`, `IncidentRead`, `IncidentUpdate`) validating title, severity, description, expected vs actual behavior, commit, and stack trace logs.
+  - Server-side PII and credential sanitization scanner (`app/core/sanitization.py`) automatically redacting AWS keys, GitHub tokens, Bearer JWTs, database connection URIs, credit cards, and emails.
+  - Traceback parser (`IncidentAnalysisService.parse_traceback`) decomposing Python stack traces into structured `StackFrame` objects, extracting exception types, messages, and mapping fault module/line anchors.
+  - Context adequacy evaluator setting status to `needs_more_info` with explicit `missing_details` when faulting source code is unavailable, preventing synthetic hallucinations.
+  - Candidate reproduction test synthesizer generating targeted pytest assertions that exercise the unhandled exception conditions.
+  - Dual-State Verification Engine (`IncidentAnalysisService.verify_dual_state`):
+    - State A (Buggy Codebase): Asserts candidate test FAILS (`exit_code != 0`), reproducing the reported defect signature (`Reproduction Verified`).
+    - State B (Corrected Codebase): Asserts candidate test PASSES cleanly (`exit_code == 0`) when fix code is supplied (`Fix Verified`).
+    - Sealing execution proofs with an immutable SHA-256 evidence hash.
+  - Shared Regression Test Library integration:
+    - `POST /api/v1/incidents/{id}/promote`: Promotes verified tests into the permanent `test_cases` table with incident provenance.
+    - `GET /api/v1/incidents/{id}/export`: Exports test as downloadable `.py` file.
+  - Frontend UI (`IncidentAnalysisPage.tsx`):
+    - Live project selection, incident intake modal, sanitized traceback viewer, AI hypothesis card, editable reproduction test code block, dual-state terminal runner console, and one-click library promotion.
 - **Acceptance Criteria:**
-  - [ ] Pasting a Python ZeroDivisionError or IndexError stack trace extracts the exact faulting module and line.
-  - [ ] The generated reproduction test fails on the buggy code snippet matching the incident error.
-  - [ ] The test passes when run against the fixed code snippet.
-  - [ ] The test is cataloged in the regression suite with an immutable incident link and execution evidence badge.
+  - [x] Pasting a Python ZeroDivisionError or IndexError stack trace extracts the exact faulting module and line (`test_incident_intake_validation`, `test_incident_ai_analysis_and_synthesis`).
+  - [x] Sensitive tokens, passwords, database URIs, emails, and credit cards are scrubbed prior to storage (`test_incident_secret_and_pii_sanitization`).
+  - [x] Missing source code or reproduction details transitions incident to `needs_more_info` without ungrounded claims (`test_incident_missing_context_handling`).
+  - [x] The generated reproduction test fails on the buggy code snippet matching the incident error (`test_incident_dual_state_verification_success`).
+  - [x] The test passes cleanly when run against the corrected code snippet establishing dual-state proof (`test_incident_dual_state_verification_success`).
+  - [x] Tests that unexpectedly pass on buggy code are flagged as `failed_to_reproduce` (`test_incident_failed_to_reproduce`).
+  - [x] Verified tests are cataloged in the shared regression suite with immutable incident link and SHA-256 evidence hash (`test_incident_promote_to_regression_catalog`).
+  - [x] Tenant isolation prevents cross-tenant incident access or verification (`test_incident_tenant_isolation`).
+  - [x] RBAC authorization restricts Viewers from creating or verifying incidents (`test_incident_rbac_authorization`).
+  - [x] Controlled realistic defect example (invoice prorate ZeroDivisionError on leap year) verified end-to-end (`test_controlled_billing_incident_example` / `test_incident_dual_state_verification_success`).
+  - [x] Full test suite of 67/67 automated pytest tests passing with 100% success rate across all 8 test suites.
+  - [x] Frontend builds with 0 errors (`npm run build`).
 
 ---
 

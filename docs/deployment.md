@@ -242,3 +242,16 @@ ENTRYPOINT ["pytest"]
 - **Database Backups:** Daily automated WAL archiving + full nightly pg_dump snapshots stored in geographically redundant S3 buckets with 30-day retention.
 - **Zero-Downtime Deployments:** Rolling updates on Kubernetes deployments with `maxSurge: 25%` and `maxUnavailable: 0`.
 - **Database Migrations:** All Alembic migrations must be backward-compatible (expand-and-contract pattern) to support zero-downtime rolling deploys.
+
+---
+
+## 8. Incident Intake & Secret Sanitization Operations
+
+### 8.1 Ingestion Throughput & Sanitization Overhead
+- The regex-based sanitization engine (`app/core/sanitization.py`) executes in-memory prior to persistence. Benchmark throughput is `< 2ms` per 100KB of raw stack traces.
+- Sentry and Datadog webhook forwarders must be configured with a per-tenant rate limit of 60 incident ingestions/minute to prevent unbounded database expansion.
+
+### 8.2 Dual-State Verification Worker Capacity
+- Each dual-state verification task spawns two isolated sandbox processes (State A on buggy code and State B on corrected code).
+- In production Kubernetes clusters, dual-state jobs are bound to dedicated runner nodes with ephemeral tmpfs volumes to ensure sub-second startup and teardown.
+

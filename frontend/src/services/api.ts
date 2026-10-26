@@ -157,6 +157,64 @@ export interface PromoteMutationResult {
   message: string;
 }
 
+export interface IncidentResult {
+  id: string;
+  project_id: string;
+  title: string;
+  description?: string | null;
+  severity: string;
+  raw_traceback: string;
+  expected_behavior?: string | null;
+  actual_behavior?: string | null;
+  reproduction_steps?: string | null;
+  source_files: string[];
+  buggy_code?: string | null;
+  corrected_code?: string | null;
+  fault_module?: string | null;
+  fault_line?: number | null;
+  hypothesis?: string | null;
+  missing_details?: string | null;
+  assumptions?: string | null;
+  uncertainty_score?: number | null;
+  repro_code?: string | null;
+  verification_state: string;
+  fixed_commit_hash?: string | null;
+  evidence_hash?: string | null;
+  state_a_stdout?: string | null;
+  state_a_stderr?: string | null;
+  state_b_stdout?: string | null;
+  state_b_stderr?: string | null;
+  generated_test_id?: string | null;
+  created_at: string;
+}
+
+export interface IncidentVerifyResult {
+  incident_id: string;
+  verification_state: string;
+  state_a_result: string;
+  state_b_result: string;
+  reproduction_proven: boolean;
+  fix_proven: boolean;
+  evidence_hash: string;
+  duration_ms: number;
+  state_a_stdout: string;
+  state_a_stderr: string;
+  state_b_stdout: string;
+  state_b_stderr: string;
+  details: string;
+}
+
+export interface IncidentPromoteResult {
+  test_case_id: string;
+  incident_id: string;
+  project_id: string;
+  name: string;
+  file_path: string;
+  status: string;
+  evidence_hash: string;
+  message: string;
+}
+
 export const api = {
   // GitHub Integration
   async getGitHubStatus(): Promise<GitHubStatusResponse> {
@@ -383,5 +441,108 @@ export const api = {
       throw new Error(err.detail || 'Promotion failed');
     }
     return await res.json();
+  },
+
+  // Incident Analysis & Verification Methods
+  async getProjectIncidents(projectId: string): Promise<IncidentResult[]> {
+    try {
+      const res = await fetch(`${API_BASE}/projects/${projectId}/incidents`, {
+        headers: getHeaders(),
+      });
+      if (!res.ok) return [];
+      return await res.json();
+    } catch {
+      return [];
+    }
+  },
+
+  async createIncident(projectId: string, data: any): Promise<IncidentResult> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/incidents`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to create incident' }));
+      throw new Error(err.detail || 'Failed to create incident');
+    }
+    return await res.json();
+  },
+
+  async getIncident(incidentId: string): Promise<IncidentResult> {
+    const res = await fetch(`${API_BASE}/incidents/${incidentId}`, {
+      headers: getHeaders(),
+    });
+    if (!res.ok) {
+      throw new Error('Incident not found');
+    }
+    return await res.json();
+  },
+
+  async updateIncident(incidentId: string, data: any): Promise<IncidentResult> {
+    const res = await fetch(`${API_BASE}/incidents/${incidentId}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to update incident' }));
+      throw new Error(err.detail || 'Failed to update incident');
+    }
+    return await res.json();
+  },
+
+  async analyzeIncident(incidentId: string): Promise<IncidentResult> {
+    const res = await fetch(`${API_BASE}/incidents/${incidentId}/analyze`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Analysis failed' }));
+      throw new Error(err.detail || 'Analysis failed');
+    }
+    return await res.json();
+  },
+
+  async verifyIncidentDualState(
+    incidentId: string,
+    data?: { candidate_test_code?: string; buggy_code?: string; corrected_code?: string; fixed_commit?: string }
+  ): Promise<IncidentVerifyResult> {
+    const res = await fetch(`${API_BASE}/incidents/${incidentId}/verify`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data || {}),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Verification failed' }));
+      throw new Error(err.detail || 'Verification failed');
+    }
+    return await res.json();
+  },
+
+  async promoteIncidentTest(
+    incidentId: string,
+    data?: { name?: string; file_path?: string; test_code?: string }
+  ): Promise<IncidentPromoteResult> {
+    const res = await fetch(`${API_BASE}/incidents/${incidentId}/promote`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data || {}),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Promotion failed' }));
+      throw new Error(err.detail || 'Promotion failed');
+    }
+    return await res.json();
+  },
+
+  async exportIncidentTest(incidentId: string): Promise<string> {
+    const res = await fetch(`${API_BASE}/incidents/${incidentId}/export`, {
+      headers: getHeaders(),
+    });
+    if (!res.ok) {
+      throw new Error('Export failed');
+    }
+    return await res.text();
   },
 };
