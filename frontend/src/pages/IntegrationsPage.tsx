@@ -88,7 +88,7 @@ const INITIAL_INTEGRATIONS: Integration[] = [
 export function IntegrationsPage() {
   const [integrations, setIntegrations] = useState<Integration[]>(INITIAL_INTEGRATIONS);
   const [activeConfig, setActiveConfig] = useState<Integration | null>(null);
-  const [cliToken, setCliToken] = useState<string>('tb_live_948f2a1b9c704e6d9812');
+  const [cliToken, setCliToken] = useState<string>('<YOUR_CLI_TOKEN>');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isTestingConnection, setIsTestingConnection] = useState(false);
 
@@ -96,7 +96,7 @@ export function IntegrationsPage() {
     const randomHex = Array.from({ length: 24 }, () =>
       Math.floor(Math.random() * 16).toString(16)
     ).join('');
-    const newToken = `tb_live_${randomHex}`;
+    const newToken = `tb_runner_${randomHex}`;
     setCliToken(newToken);
     navigator.clipboard.writeText(newToken);
     setToastMessage('New CLI runner token generated and copied to clipboard.');
@@ -194,7 +194,7 @@ export function IntegrationsPage() {
               className="text-xs flex items-center gap-1.5"
             >
               <Key className="w-3.5 h-3.5 text-brand-teal" />
-              Rotate Token
+              {cliToken === '<YOUR_CLI_TOKEN>' ? 'Generate Token' : 'Rotate Token'}
             </Button>
             <Button
               variant="primary"

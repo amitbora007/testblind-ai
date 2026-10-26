@@ -72,7 +72,7 @@ async def generate_cli_token(
 ) -> CliTokenResponse:
     """Generate a high-entropy runner token for the local on-premises testblind-cli agent."""
     token_hex = secrets.token_hex(24)
-    token = f"tb_live_{token_hex}"
+    token = f"tb_runner_{token_hex}"
     cmd = f"curl -fsSL https://get.testblind.ai | sh && testblind auth --token {token}"
 
     return CliTokenResponse(

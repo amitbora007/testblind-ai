@@ -180,7 +180,7 @@ The development of TestBlind AI is structured into nine sequential engineering p
     - `/api/v1/incidents`: incident intake, AST fault frame parsing, and dual-state verification.
     - `/api/v1/reports`: mutation scores, code coverage metrics, and real JSON/CSV export generation.
     - `/api/v1/ai-insights`: flaky test predictions, coverage gap optimizations, and test synthesis suggestions.
-    - `/api/v1/integrations`: third-party tool configurations and CLI token issuance (`tb_live_...`).
+    - `/api/v1/integrations`: third-party tool configurations and CLI runner token issuance (`tb_runner_...`).
     - `/api/v1/audit`: security and administrative event audit log stream.
   - Comprehensive automated Pytest test suite (`backend/tests/`) running against live PostgreSQL with isolated transactions.
 - **Acceptance Criteria:**

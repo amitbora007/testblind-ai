@@ -221,5 +221,5 @@ async def test_integrations_and_cli_token(client: AsyncClient, tenant_a):
     cli_res = await client.post("/api/v1/integrations/cli-token", headers=tenant_a["headers"])
     assert cli_res.status_code == 200
     cli_data = cli_res.json()
-    assert cli_data["token"].startswith("tb_live_")
+    assert cli_data["token"].startswith("tb_runner_")
     assert "curl -fsSL https://get.testblind.ai" in cli_data["install_command"]

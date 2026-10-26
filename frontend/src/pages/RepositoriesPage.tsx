@@ -46,6 +46,7 @@ export function RepositoriesPage() {
   const [zipResult, setZipResult] = useState<ZipUploadResult | null>(null);
 
   // CLI state
+  const [cliToken, setCliToken] = useState<string>('<YOUR_CLI_TOKEN>');
   const [cliTokenCopied, setCliTokenCopied] = useState(false);
   const [cliCmdCopied, setCliCmdCopied] = useState(false);
 
@@ -450,17 +451,26 @@ export function RepositoriesPage() {
                 </label>
                 <div className="flex items-center gap-2">
                   <div className="flex-1 p-2.5 rounded bg-slate-950 border border-slate-800 font-mono text-xs text-slate-400">
-                    tb_live_94f8b2c17a6e0d4f3b8a1c9e7d5f2a4b
+                    {cliToken}
                   </div>
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() =>
-                      copyToClipboard('tb_live_94f8b2c17a6e0d4f3b8a1c9e7d5f2a4b', setCliTokenCopied)
-                    }
+                    onClick={() => {
+                      if (cliToken === '<YOUR_CLI_TOKEN>') {
+                        const randomHex = Array.from({ length: 24 }, () =>
+                          Math.floor(Math.random() * 16).toString(16)
+                        ).join('');
+                        const generated = `tb_runner_${randomHex}`;
+                        setCliToken(generated);
+                        copyToClipboard(generated, setCliTokenCopied);
+                      } else {
+                        copyToClipboard(cliToken, setCliTokenCopied);
+                      }
+                    }}
                     leftIcon={<Key className="w-3.5 h-3.5" />}
                   >
-                    {cliTokenCopied ? 'Copied' : 'Copy Token'}
+                    {cliTokenCopied ? 'Copied' : cliToken === '<YOUR_CLI_TOKEN>' ? 'Generate & Copy' : 'Copy Token'}
                   </Button>
                 </div>
               </div>
@@ -471,7 +481,7 @@ export function RepositoriesPage() {
                 </label>
                 <div className="p-3 rounded bg-slate-950 border border-slate-800 font-mono text-xs text-slate-300 space-y-1">
                   <p className="text-slate-500"># Run local AST analysis and sync anonymized metadata</p>
-                  <p className="text-cyan-300">testblind scan --path ./my-app --token tb_live_94f8b2c17a6e0d4f3b8a1c9e7d5f2a4b</p>
+                  <p className="text-cyan-300">testblind scan --path ./my-app --token {cliToken}</p>
                 </div>
               </div>
             </div>
