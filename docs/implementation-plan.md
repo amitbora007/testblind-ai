@@ -52,9 +52,10 @@ The development of TestBlind AI is structured into nine sequential engineering p
                                        │
                                        ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ Phase 5: AI Test Gap Discovery & Mutation Testing Pipeline [PLANNED]        │
-│ - AST parser, operator mutation matrix (ROR, AOR, LCR, BSR)                 │
-│ - Surviving mutant identification, LLM test synthesis & verification        │
+│ Phase 5: Repository Integrations, Code Intake & Code Lab [COMPLETED]        │
+│ - Safe ZIP intake, Zip Slip / Zip Bomb defense, test runner auto-detection   │
+│ - Zero-trust GitHub integration, Standalone Code Lab sandbox, Local CLI     │
+│ - 34/34 total automated pytest tests passing (14 new Phase 5 tests)         │
 └──────────────────────────────────────┬──────────────────────────────────────┘
                                        │
                                        ▼
@@ -194,7 +195,48 @@ The development of TestBlind AI is structured into nine sequential engineering p
 
 ---
 
-### Phase 5: Incident-to-Regression Pipeline & Dual-State Verification (PLANNED)
+### Phase 5: Repository Integrations, Code Intake & Standalone Code Lab (COMPLETED)
+- **Scope:**
+  - Build defensive repository intake pipeline supporting GitHub App / OAuth and secure local ZIP file ingestion.
+  - Safe Archive Extractor (`backend/app/services/archive_service.py`):
+    - Magic byte signature check (`PK\x03\x04` / `PK\x05\x06`), rejecting renamed binaries with HTTP 400.
+    - Zip Slip path traversal mitigation: enforces `os.path.commonpath([dest_dir, target_path]) == dest_dir`, rejecting any `..` or root escaping paths with a security alert.
+    - Zip Bomb mitigation: caps uncompressed size to 500MB, file count to 10,000, and rejects abnormal compression ratios (> 100:1).
+    - Rejection of malicious symbolic link entries.
+  - Project Structure Detector:
+    - Auto-detection of programming languages (`python`, `typescript`, `javascript`, `go`, `java`).
+    - Auto-detection of test runners and suggested commands (`pytest`, `jest`, `vitest`, `go test`, `mvn test`).
+    - File manifest gathering and project framework synchronization.
+  - GitHub App / OAuth Integration:
+    - Zero-trust credential model: when `GITHUB_CLIENT_ID`/`SECRET` are unset, API explicitly returns `configured: false, connected: false` and setup instructions; never simulates connection.
+    - Secure token storage in `IntegrationSetting` and audit event logging.
+    - Repositories, branch selection, and commit listing endpoints.
+  - Standalone Code Lab Service & Sandboxing:
+    - AST parsing of standalone snippets (functions, branches, and comparison operators `ROR`).
+    - Mutation candidate generation (e.g. `>` to `>=`).
+    - Targeted boundary test synthesis.
+    - Sub-second ephemeral execution sandbox capturing stdout/stderr and sealing results with SHA-256 evidence hashes.
+    - Strict semantic demarcation: source-only AI suggestions (`is_executable: false`) vs executed sandbox evidence (`is_executable: true`).
+  - On-Premise Local CLI Companion (`testblind`):
+    - Airgapped local scanning for developers who cannot upload proprietary source code.
+    - Performs local AST analysis and test runner detection without transmitting raw code bytes off-host.
+  - Frontend UI Integration:
+    - `RepositoriesPage.tsx`: Honest unconfigured GitHub alert card, real ZIP upload progress bar, structure detection chips, and CLI interactive copy.
+    - `CodeLabPage.tsx`: Live AST analysis, test proposal synthesis, sandbox execution logs, and semantic status badges.
+- **Acceptance Criteria:**
+  - [x] Valid ZIP repositories are extracted safely and correctly detect language and test runner (`test_zip_upload_valid_python_repo`, `test_zip_upload_valid_typescript_repo`).
+  - [x] Non-ZIP files and renamed binaries are rejected with HTTP 400 via magic byte verification (`test_zip_upload_invalid_non_zip_file`).
+  - [x] Malicious Zip Slip archive entries (`../../../../etc/passwd`) are rejected with HTTP 400 security alert (`test_zip_upload_malicious_path_traversal_zip_slip`).
+  - [x] Unsupported archive formats (.tar.gz, .rar) are rejected (`test_zip_upload_unsupported_archive_type`).
+  - [x] Scratch files are purged on demand via retention cleanup endpoint (`test_zip_upload_retention_and_cleanup`).
+  - [x] Unconfigured GitHub environment displays clear setup state and instructions; never claims connection succeeded (`test_github_status_unconfigured`, `test_github_connect_unconfigured_error`).
+  - [x] GitHub repository and branch selection works when configured (`test_github_configured_workflow_and_linking`).
+  - [x] RBAC authorization restricts Viewers from uploading repository archives (`test_repository_authorization_rbac`).
+  - [x] Standalone Code Lab performs AST parsing without repository requirement and marks suggestions as `is_executable: false` (`test_codelab_analyze_python_ast`).
+  - [x] Code Lab synthesizes targeted boundary assertions (`test_codelab_synthesize_boundary_test`).
+  - [x] Code Lab sandbox executes tests, captures stdout/stderr, and seals proof with SHA-256 hash with `is_executable: true` (`test_codelab_execute_sandbox`).
+  - [x] All 34 automated backend pytest tests pass with 100% success rate (`pytest backend/tests -v`).
+  - [x] Frontend builds with 0 errors (`npm run build`).
 - **Scope:**
   - Incident intake API accepting raw stack traces, logs, and commit references.
   - Stack trace parser extracting faulting frames, file paths, and line numbers.

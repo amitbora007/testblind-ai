@@ -147,6 +147,23 @@ Every test run or mutation execution is encapsulated inside an ephemeral contain
 4. **Log Interception & Streaming:** Stdout and Stderr are intercepted frame-by-frame, published to Redis Pub/Sub channels for live client WebSocket playback, and aggregated for analysis.
 5. **Teardown & Purge:** Container is forcefully terminated (`docker rm -f`) and the temporary workspace directory is securely purged.
 
+### 3.4 Safe Archive Ingestion & Path Traversal (Zip Slip) Defense
+Uploaded ZIP archives from untrusted users present critical path traversal attack vectors. TestBlind AI enforces three defense-in-depth layers inside `SafeArchiveExtractor`:
+1. **Magic Byte Signature Verification:** Verifies standard ZIP header signatures (`PK\x03\x04` or `PK\x05\x06`). Renamed executable binaries (`.exe`, `.elf`, `.so`, scripts) are rejected with `HTTP 400 Bad Request`.
+2. **Zip Slip Canonical Path Traversal Defense:** Each archive member's normalized target path is tested using `os.path.commonpath([dest_dir, target_path]) == dest_dir`. Any relative directory traversal (`../../../../etc/passwd`), absolute path (`/etc/shadow`), or symlink pointing outside the tenant destination directory is aborted immediately with a security alert.
+3. **Zip Bomb Mitigation:** Archives with uncompressed sizes exceeding 500MB, compression ratios exceeding 100:1, or containing more than 10,000 files are rejected.
+
+### 3.5 Standalone Code Lab Sandbox & Evidence Sealing
+The Code Lab enables instant AST mutation testing without requiring a repository connection.
+- **AST Parser:** Analyzes Python AST (`ast.parse`) or TypeScript syntax trees to isolate function definitions, branch nodes, and relational comparison operators (`ROR`: `<`, `<=`, `>`, `>=`, `==`, `!=`).
+- **Semantic Demarcation:** Clearly separates **source-only AI proposals** (`is_executable: false`) from **verified execution evidence** (`is_executable: true`).
+- **Cryptographic Evidence Sealing:** Successful sandbox executions compute a SHA-256 evidence hash of `source_code + test_code + stdout + exit_code`, ensuring immutable provenance.
+
+### 3.6 Local CLI Companion (`testblind-cli`) Architecture
+For enterprise teams prohibited from uploading proprietary source code to cloud services, the local companion CLI (`testblind scan`) executes AST parsing on the developer machine:
+- Transmits only anonymized AST metadata hashes and mutation signatures to the Control Plane.
+- Zero source code bytes leave the local developer workstation.
+
 ---
 
 ## 4. Database Schema & Entity Architecture

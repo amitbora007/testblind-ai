@@ -100,10 +100,16 @@ SANDBOX_MAX_CPU_CORES=1.0
 SANDBOX_IMAGE_PYTHON=testblind-runner-python:3.12
 SANDBOX_IMAGE_NODE=testblind-runner-node:20
 
-# GitHub App Integration
+# GitHub App / OAuth Integration
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=
 GITHUB_APP_ID=
 GITHUB_APP_PRIVATE_KEY_PATH=
 GITHUB_WEBHOOK_SECRET=
+
+# Archive Upload & Storage Quotas
+UPLOAD_MAX_SIZE_BYTES=104857600         # 100MB
+UPLOAD_RETENTION_HOURS=24               # 24 Hours Ephemeral Scratch TTL
 ```
 
 ---

@@ -303,4 +303,25 @@ Captured with Google Chrome Headless and stored in `references/screenshots/phase
 - [`desktop_1440_team_settings.png`](file:///home/amit.bora/Downloads/ai/TestBlind%20AI/references/screenshots/phase3/desktop_1440_team_settings.png) — 1440x900 RBAC & Container Security Quotas
 - [`mobile_320_reports.png`](file:///home/amit.bora/Downloads/ai/TestBlind%20AI/references/screenshots/phase3/mobile_320_reports.png) — 320x568 Ultra-narrow mobile verification
 
+---
+
+## 9. Phase 5 Experience Specifications & Ingestion States
+
+### 9.1 Honest Unconfigured Setup States
+When external credentials (`GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`) are absent from the environment, TestBlind AI never simulates or implies an active connection. The interface renders:
+- High-contrast `Setup Required` status pill (amber token).
+- Clear instruction panel highlighting required environment variables.
+- Explicit notice that server restart is required to bind active OAuth / App hooks.
+
+### 9.2 Safe Ingestion Feedback & Security Alerts
+- **Progress Tracking:** Live percentage indicators and animated progress bars during multipart ZIP upload.
+- **Defensive Error Cues:** Immediate red alerts on Zip Slip path traversal attempts (`../../../../etc/passwd`), invalid magic byte signatures, or oversized uploads.
+- **Project Structure Metadata:** Upon successful extraction, displays language chips, detected test runner badges, and scrollable extracted file manifests.
+
+### 9.3 Semantic Evidence Distinction in Code Lab
+To prevent developer confusion between synthetic proposals and verified execution evidence, Code Lab components display distinct badge variants:
+- **`Source Analysis (Unexecuted)` (Outline):** Structural AST parsing without test execution.
+- **`AI Proposal (Unexecuted)` (Purple):** Generated boundary test proposals awaiting sandbox execution.
+- **`Verified Sandbox Run (Sealed)` (Emerald Green):** Confirmed test execution logs sealed with SHA-256 cryptographic provenance hashes.
+
 

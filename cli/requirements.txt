@@ -1,0 +1,2 @@
+# Minimal dependencies for local CLI
+requests>=2.31.0

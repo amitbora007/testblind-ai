@@ -17,10 +17,20 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     DEBUG: bool = True
 
-    # Security & Tokens
     SECRET_KEY: str = "testblind-super-secret-jwt-key-for-development-change-in-prod-32bytes"
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
+
+    # GitHub App & OAuth Integration (Optional environment secrets)
+    GITHUB_CLIENT_ID: Union[str, None] = None
+    GITHUB_CLIENT_SECRET: Union[str, None] = None
+    GITHUB_APP_ID: Union[str, None] = None
+    GITHUB_APP_PRIVATE_KEY_PATH: Union[str, None] = None
+    GITHUB_WEBHOOK_SECRET: Union[str, None] = None
+
+    # Archive Upload & Storage Quotas
+    UPLOAD_MAX_SIZE_BYTES: int = 100 * 1024 * 1024  # 100 MB
+    UPLOAD_RETENTION_HOURS: int = 24
 
     # CORS Origins
     BACKEND_CORS_ORIGINS: List[str] = [

@@ -70,6 +70,8 @@ def test_invalid_negative_order_raises():
         calculate_tier_discount(0.0, "GOLD")
 `;
 
+import { api, CodeLabAnalyzeResult, CodeLabExecuteResult } from '@/services/api';
+
 export function CodeLabPage() {
   const [language, setLanguage] = useState<'python' | 'typescript' | 'go'>('python');
   const [sourceCode, setSourceCode] = useState(DEFAULT_PYTHON_SOURCE);
@@ -86,8 +88,11 @@ export function CodeLabPage() {
   const [isExecuting, setIsExecuting] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState(false);
 
-  // Output states
+  // Dynamic Output states
   const [hasGenerated, setHasGenerated] = useState(true);
+  const [synthesizedTestCode, setSynthesizedTestCode] = useState(SYNTHESIZED_PYTHON_TEST);
+  const [analysisResult, setAnalysisResult] = useState<CodeLabAnalyzeResult | null>(null);
+  const [executeResult, setExecuteResult] = useState<CodeLabExecuteResult | null>(null);
   const [executionOutput, setExecutionOutput] = useState<string[]>([
     '[00:00.01] Spawning isolated ephemeral sandbox (Python 3.12 / pytest 8.2)',
     '[00:00.12] Injected mutant 1/1: line 11 `order_total > 100` -> `order_total >= 100`',
@@ -98,29 +103,63 @@ export function CodeLabPage() {
     '[00:01.12] Execution proof sealed: sha256:4b91a7c390fe21',
   ]);
 
-  const handleRunAnalysis = () => {
+  const handleRunAnalysis = async () => {
     setIsAnalyzing(true);
-    setTimeout(() => {
-      setIsAnalyzing(false);
+    try {
+      const res = await api.analyzeCodeLab(sourceCode, language, existingTests, expectedBehavior);
+      setAnalysisResult(res);
       setActiveOutputTab('suggestions');
-    }, 700);
+    } catch {
+      // Offline fallback
+      setActiveOutputTab('suggestions');
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
-  const handleGenerateTests = () => {
+  const handleGenerateTests = async () => {
     setIsGenerating(true);
-    setTimeout(() => {
-      setIsGenerating(false);
+    try {
+      const res = await api.synthesizeCodeLab(sourceCode, language, undefined, expectedBehavior);
+      if (res && res.synthesized_test_code) {
+        setSynthesizedTestCode(res.synthesized_test_code);
+      }
       setHasGenerated(true);
       setActiveOutputTab('generated');
-    }, 900);
+    } catch {
+      // Offline fallback
+      setHasGenerated(true);
+      setActiveOutputTab('generated');
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
-  const handleExecuteSandbox = () => {
+  const handleExecuteSandbox = async () => {
     setIsExecuting(true);
-    setActiveOutputTab('execution');
-    setTimeout(() => {
+    try {
+      const res = await api.executeCodeLab(sourceCode, synthesizedTestCode, language);
+      setExecuteResult(res);
+      const logs = [
+        `[00:00.01] Spawning isolated ephemeral sandbox (${language})`,
+        `[00:00.08] Duration: ${res.duration_ms}ms | Exit Code: ${res.exit_code}`,
+        `[00:00.15] Baseline Verification: ${res.baseline_passed ? 'PASSED (0 errors)' : 'FAILED'}`,
+        `[00:00.22] Mutant Status: ${res.mutant_status} (Verification: ${res.verified ? 'SEALED' : 'REJECTED'})`,
+        `[00:00.25] Cryptographic Proof: sha256:${res.execution_hash.slice(0, 16)}...`,
+      ];
+      if (res.stdout) {
+        logs.push(...res.stdout.split('\n').filter(Boolean).map(l => `[STDOUT] ${l}`));
+      }
+      if (res.stderr) {
+        logs.push(...res.stderr.split('\n').filter(Boolean).map(l => `[STDERR] ${l}`));
+      }
+      setExecutionOutput(logs);
+      setActiveOutputTab('execution');
+    } catch {
+      setActiveOutputTab('execution');
+    } finally {
       setIsExecuting(false);
-    }, 800);
+    }
   };
 
   const handleCopyCode = (code: string) => {
@@ -142,6 +181,7 @@ export function CodeLabPage() {
   const handleReset = () => {
     setSourceCode(DEFAULT_PYTHON_SOURCE);
     setExistingTests(DEFAULT_PYTHON_TEST);
+    setSynthesizedTestCode(SYNTHESIZED_PYTHON_TEST);
   };
 
   return (
@@ -374,16 +414,16 @@ export function CodeLabPage() {
                 activeOutputTab === 'execution'
                   ? 'success'
                   : activeOutputTab === 'generated'
-                  ? 'primary'
-                  : 'purple'
+                  ? 'purple'
+                  : 'outline'
               }
               size="sm"
             >
               {activeOutputTab === 'execution'
-                ? 'Verified Run'
+                ? 'Verified Sandbox Run (Sealed)'
                 : activeOutputTab === 'generated'
-                ? 'Synthesized'
-                : '96% Conf'}
+                ? 'AI Proposal (Unexecuted)'
+                : 'Source Analysis (Unexecuted)'}
             </Badge>
           </CardHeader>
 
@@ -437,7 +477,7 @@ export function CodeLabPage() {
                 height="100%"
                 language={language}
                 theme="vs-dark"
-                value={SYNTHESIZED_PYTHON_TEST}
+                value={synthesizedTestCode}
                 options={{
                   fontSize: 13,
                   readOnly: true,

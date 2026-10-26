@@ -118,3 +118,10 @@ async def tenant_b(db_session: AsyncSession):
             "X-Organization-ID": str(org.id),
         },
     }
+
+
+@pytest_asyncio.fixture(scope="function")
+async def test_user_headers(tenant_a):
+    """Convenience fixture providing default tenant A headers."""
+    return tenant_a["headers"]
+

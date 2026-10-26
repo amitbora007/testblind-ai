@@ -13,6 +13,9 @@ from app.api.v1.reports import router as reports_router
 from app.api.v1.ai_insights import router as insights_router
 from app.api.v1.integrations import router as integrations_router
 from app.api.v1.audit import router as audit_router
+from app.api.v1.github import router as github_router
+from app.api.v1.repositories import router as repositories_router
+from app.api.v1.codelab import router as codelab_router
 
 api_router = APIRouter()
 
@@ -21,6 +24,9 @@ api_router.include_router(health_router)
 api_router.include_router(auth_router)
 api_router.include_router(org_router)
 api_router.include_router(project_router)
+api_router.include_router(repositories_router)
+api_router.include_router(github_router)
+api_router.include_router(codelab_router)
 api_router.include_router(dashboard_router)
 api_router.include_router(scan_router)
 api_router.include_router(test_cases_router)
@@ -31,3 +37,4 @@ api_router.include_router(reports_router)
 api_router.include_router(insights_router)
 api_router.include_router(integrations_router)
 api_router.include_router(audit_router)
+
