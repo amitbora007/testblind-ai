@@ -1,0 +1,220 @@
+# TestBlind AI — Phased Implementation Plan & Acceptance Criteria
+
+**Document Version:** 1.0.0  
+**Status:** Approved Master Roadmap  
+**Current Phase:** Phase 1 (Foundation & Specification) — Completed  
+**Next Phase:** Phase 2 (Core Data Models, Authentication & Multi-Tenancy)  
+
+---
+
+## 1. Roadmap Overview & Implementation Phases
+
+The development of TestBlind AI is structured into nine sequential engineering phases. To ensure architectural integrity, security of untrusted code execution, and high visual fidelity to the TraceAI Studio benchmark, each phase must satisfy strict acceptance criteria before downstream phases commence.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Phase 1: Foundation, Specification & Architecture [COMPLETED]               │
+│ - Canonical specs (product-spec.md, architecture.md, design.md, bugs.md)    │
+│ - Tech stack validation & design system token definitions                   │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Phase 2: Core Data Models, Authentication & Multi-Tenancy [PLANNED]         │
+│ - PostgreSQL 16 schema, SQLAlchemy models, Alembic migrations               │
+│ - Tenant isolation, RBAC (Owner/Admin/Engineer/Viewer), JWT auth            │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Phase 3: Sandboxed Untrusted Execution Engine [PLANNED]                     │
+│ - Ephemeral container runners (Docker/gVisor), resource quotas, timeout     │
+│ - Zero API execution enforcement, Redis pub/sub live log streaming          │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Phase 4: AI Test Gap Discovery & Mutation Testing Pipeline [PLANNED]        │
+│ - AST parser, operator mutation matrix (ROR, AOR, LCR, BSR)                 │
+│ - Surviving mutant identification, LLM test synthesis & verification        │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Phase 5: Incident-to-Regression Pipeline & Dual-State Verification [PLANNED]│
+│ - Stacktrace/log parser, fault anchor mapping                               │
+│ - Dual-state verification (reproduce on buggy, pass on fixed)               │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Phase 6: Dark TraceAI Studio Dashboard & Web Application [PLANNED]          │
+│ - React 19 + TypeScript + Vite + Tailwind CSS                               │
+│ - 4 metric cards, stacked execution bar chart, donut chart, scenario table  │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Phase 7: Standalone Code Playground & Local ZIP Ingestion [PLANNED]         │
+│ - Multi-language Monaco code editor, sub-second sandbox execution           │
+│ - Safe ZIP decompression with path traversal defense                        │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Phase 8: Integrations & Local CLI (`testblind-cli`) [PLANNED]               │
+│ - GitHub App & OAuth, webhook triggers, PR checks                           │
+│ - Local CLI for on-prem enterprise execution without code upload            │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Phase 9: Hardening, Security Audits, E2E Verification & Launch [PLANNED]   │
+│ - Container breakout penetration testing, load testing (100+ sandboxes)     │
+│ - Full regression test suite, documentation reconciliation, launch         │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 2. Phase-by-Phase Scope & Detailed Acceptance Criteria
+
+### Phase 1: Foundation, Specification & Architecture (CURRENT — COMPLETED)
+- **Scope:**
+  - Workspace inspection, git initialization, and tool verification.
+  - Skill discovery (`ui-ux-pro-max`, `frontend-design`, `modern-web-guidance`, `chrome-dev-tools`).
+  - Analysis of visual design benchmark (`references/aitool.jpeg`).
+  - Creation of all canonical root documentation files: `product-spec.md`, `architecture.md`, `design.md`, `bugs.md`, `deployment.md`, `readme.md`, `implementation-plan.md`.
+- **Acceptance Criteria:**
+  - [x] All 7 canonical documentation files exist at repository root and are reconciled with each other.
+  - [x] Core product workflows (AI Test Gap Discovery, Incident-to-Regression) are exhaustively defined.
+  - [x] Sandboxed execution architecture and security defense-in-depth are documented.
+  - [x] TraceAI Studio design tokens and responsive breakpoints are specified.
+  - [x] Architectural risk register (`bugs.md`) catalogs failure modes and mitigations.
+  - [x] Git repository is initialized with clean status.
+
+---
+
+### Phase 2: Core Data Models, Authentication & Multi-Tenancy (PLANNED)
+- **Scope:**
+  - FastAPI backend skeleton (`backend/app`).
+  - PostgreSQL schema and SQLAlchemy models (`Organization`, `User`, `Project`, `TestCase`, `TestScenario`, `ExecutionRun`, `Mutation`, `Incident`).
+  - Alembic migration pipeline.
+  - Multi-tenant tenant context middleware and RBAC enforcement.
+  - Safe ZIP upload handler with Zip-Slip path traversal validation.
+- **Acceptance Criteria:**
+  - [ ] Running `alembic upgrade head` cleanly applies all tables, indexes, foreign keys, and pgvector extension.
+  - [ ] Auth endpoints (`/api/v1/auth/register`, `/api/v1/auth/login`) issue signed JWT tokens with role claims.
+  - [ ] Multi-tenant isolation is verified: Tenant A cannot read, query, or mutate Tenant B records (100% test coverage).
+  - [ ] Uploading a ZIP containing `../` malicious relative paths is rejected with `400 Bad Request`.
+
+---
+
+### Phase 3: Sandboxed Untrusted Execution Engine (PLANNED)
+- **Scope:**
+  - Container runner daemon interfacing with Docker API / gVisor runtime.
+  - Runner images for Python (`pytest`) and Node.js (`jest`/`vitest`).
+  - Hardened execution constraints: non-root `uid=10001`, `--read-only`, tmpfs scratch, `--network=none`, 1 CPU, 1024MB RAM.
+  - Redis Pub/Sub buffered real-time log streamer and FastAPI WebSocket gateway (`/ws/v1/runs/{run_id}/stream`).
+- **Acceptance Criteria:**
+  - [ ] A test script attempting `import socket; socket.connect(...)` fails due to blocked network access.
+  - [ ] A test script attempting `with open('/root/test', 'w')` fails due to read-only rootfs.
+  - [ ] A test script with `while True: pass` is killed cleanly at the 60-second timeout threshold.
+  - [ ] WebSocket client receives stdout/stderr chunks in real-time (< 200ms latency) and reconnects without dropped logs.
+
+---
+
+### Phase 4: AI Test Gap Discovery & Mutation Testing Pipeline (PLANNED)
+- **Scope:**
+  - AST parser and operator mutation generator (`AOR`, `ROR`, `LCR`, `BSR`) for Python and TypeScript.
+  - Celery/Arq mutation worker executing mutants in parallel ephemeral sandboxes.
+  - Surviving mutant detection and classification.
+  - LLM prompt assembly and structured output synthesis targeting surviving mutants.
+  - Static AST assertion filter ensuring generated tests contain valid assertions.
+  - Automated sandbox execution of synthesized test: must kill the mutant AND pass on unmutated baseline.
+- **Acceptance Criteria:**
+  - [ ] Mutation engine mutates `>=` to `>` and verifies that a passing test suite lacking boundary assertions leaves the mutant SURVIVING.
+  - [ ] AI synthesizer generates a targeted test that kills the surviving mutant.
+  - [ ] The generated test executes inside the sandbox and is marked `VERIFIED_EXECUTED` with cryptographic execution hash.
+  - [ ] Tests containing no assertions or `assert True` are rejected by the AST filter.
+
+---
+
+### Phase 5: Incident-to-Regression Pipeline & Dual-State Verification (PLANNED)
+- **Scope:**
+  - Incident intake API accepting raw stack traces, logs, and commit references.
+  - Stack trace parser extracting faulting frames, file paths, and line numbers.
+  - PII / secret redaction filter stripping API keys and passwords before prompt dispatch.
+  - Reproduction test synthesizer generating tests replicating the failure.
+  - Dual-State Verification Engine:
+    - Step A: Run test on buggy code -> Must FAIL with identical exception signature.
+    - Step B: Run test on fixed code -> Must PASS with exit code 0.
+  - Promotion to the unified regression test suite.
+- **Acceptance Criteria:**
+  - [ ] Pasting a Python ZeroDivisionError or IndexError stack trace extracts the exact faulting module and line.
+  - [ ] The generated reproduction test fails on the buggy code snippet matching the incident error.
+  - [ ] The test passes when run against the fixed code snippet.
+  - [ ] The test is cataloged in the regression suite with an immutable incident link and execution evidence badge.
+
+---
+
+### Phase 6: Dark TraceAI Studio Dashboard & Web Application (PLANNED)
+- **Scope:**
+  - React 19 + TypeScript + Vite + Tailwind CSS frontend application.
+  - Full implementation of the TraceAI Studio dark palette (`#0F172A`, `#1E293B`, `#334155`).
+  - Top 4 KPI metric cards:
+    - Test Cases Overview (Total, Automated/Manual, Automation Rate bar).
+    - Requirement Coverage (Total, Covered/Untested, 92% circular gauge).
+    - Test Scenarios Executed (Total, Passed/Failed, green sparkline).
+    - AI-Driven Insights (Flaky count, Optimization count, glowing AI brain).
+  - Main charts:
+    - Weekly Execution Status stacked bar chart (Passed/Failed/Skipped/Blocked).
+    - Requirement Coverage Analysis donut chart (60/25/10/5 breakdown).
+  - Recent Test Scenarios table with scenario drawer, execution duration, and AI confidence badges.
+  - Responsive layouts: desktop, tablet, and mobile.
+- **Acceptance Criteria:**
+  - [ ] Visual fidelity matches `references/aitool.jpeg` across layout, colors, typography, and card hierarchy.
+  - [ ] Fully responsive down to 375px mobile without horizontal layout breakages.
+  - [ ] Keyboard navigable with visible focus states and WCAG 2.1 AA compliant text contrast.
+  - [ ] Interactive slide-over drawer shows detailed scenario step logs and verified evidence signatures.
+
+---
+
+### Phase 7: Standalone Code Playground & Local ZIP Ingestion (PLANNED)
+- **Scope:**
+  - Standalone Monaco code editor supporting Python, TypeScript, and Go.
+  - Split editor view: Implementation code (left) vs Unit / Generated tests (right).
+  - Quick action toolbar: "Inject Mutations", "Generate Test", "Run in Sandbox".
+  - Sub-second execution sandbox returning stdout, stderr, execution duration, and mutation status.
+  - Web UI drag-and-drop ZIP upload with progress bar and automatic project creation.
+- **Acceptance Criteria:**
+  - [ ] User can enter code in the playground without logging in or connecting a repository.
+  - [ ] Clicking "Run in Sandbox" executes code in ephemeral container and returns results within 3 seconds.
+  - [ ] Dragging and dropping a repository ZIP archive unpacks safely and populates project file tree.
+
+---
+
+### Phase 8: Integrations & Local CLI (`testblind-cli`) (PLANNED)
+- **Scope:**
+  - GitHub App integration for OAuth login, repository selection, and pull request checks.
+  - GitHub Action workflow integration for CI-triggered test gap discovery.
+  - Standalone `testblind-cli` tool for local developer machines:
+    - Analyzes local repository without uploading proprietary source code.
+    - Sends anonymized AST metadata and failure signatures to SaaS API.
+    - Receives test proposals and executes them locally in developer's Docker daemon.
+- **Acceptance Criteria:**
+  - [ ] GitHub webhook on pull request triggers mutation analysis and posts check summary with mutation score delta.
+  - [ ] `testblind-cli run --local` executes mutation testing locally and displays formatted terminal table.
+
+---
+
+### Phase 9: Hardening, Security Audits, E2E Verification & Launch (PLANNED)
+- **Scope:**
+  - Penetration testing of container sandbox (fork bombs, privilege escalation, tmpfs exhaustion).
+  - Load testing with Locust / k6 simulating 100+ concurrent sandbox executions.
+  - End-to-end Cypress/Playwright automated test suite for the web UI.
+  - Final reconciliation of all documentation against the codebase.
+- **Acceptance Criteria:**
+  - [ ] Zero critical or high vulnerabilities in container isolation audit.
+  - [ ] API maintains P95 latency < 120ms under 50 req/sec load.
+  - [ ] 100% of automated E2E user flows pass reliably.
