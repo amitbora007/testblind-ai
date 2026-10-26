@@ -8,27 +8,85 @@ interface TabsContextType {
 
 const TabsContext = createContext<TabsContextType | null>(null);
 
+export interface TabItem {
+  id: string;
+  label: string;
+}
+
 export interface TabsProps {
-  defaultValue: string;
+  defaultValue?: string;
   value?: string;
   onValueChange?: (val: string) => void;
   className?: string;
-  children: React.ReactNode;
+  children?: React.ReactNode;
+  // Shorthand array mode
+  tabs?: TabItem[];
+  activeTab?: string;
+  onChange?: (val: string) => void;
 }
 
-export function Tabs({ defaultValue, value, onValueChange, className, children }: TabsProps) {
-  const [currentTab, setCurrentTab] = useState(defaultValue);
-  const activeTab = value !== undefined ? value : currentTab;
+export function Tabs({
+  defaultValue,
+  value,
+  onValueChange,
+  className,
+  children,
+  tabs,
+  activeTab: propActiveTab,
+  onChange,
+}: TabsProps) {
+  // If shorthand tabs array is provided:
+  if (tabs && tabs.length > 0) {
+    const currentActive = propActiveTab || value || tabs[0].id;
+    return (
+      <div
+        role="tablist"
+        className={cn(
+          'inline-flex items-center gap-1 p-1 bg-slate-900/80 rounded-lg border border-slate-800 text-slate-400',
+          className
+        )}
+      >
+        {tabs.map((tab) => {
+          const isActive = currentActive === tab.id;
+          return (
+            <button
+              key={tab.id}
+              role="tab"
+              aria-selected={isActive}
+              onClick={() => {
+                onChange?.(tab.id);
+                onValueChange?.(tab.id);
+              }}
+              className={cn(
+                'px-3.5 py-1.5 text-xs font-medium rounded-md transition-all duration-150',
+                isActive
+                  ? 'bg-slate-800 text-white shadow-sm border border-slate-700/80'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+              )}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // Compound component mode:
+  const initial = defaultValue || value || '';
+  const [currentTab, setCurrentTab] = useState(initial);
+  const active = value !== undefined ? value : currentTab;
 
   const handleTabChange = (val: string) => {
     if (value === undefined) {
       setCurrentTab(val);
     }
     onValueChange?.(val);
+    onChange?.(val);
   };
 
   return (
-    <TabsContext.Provider value={{ activeTab, setActiveTab: handleTabChange }}>
+    <TabsContext.Provider value={{ activeTab: active, setActiveTab: handleTabChange }}>
       <div className={cn('w-full space-y-4', className)}>{children}</div>
     </TabsContext.Provider>
   );
@@ -64,7 +122,7 @@ export function TabTrigger({ value, className, children, ...props }: TabTriggerP
       className={cn(
         'px-3.5 py-1.5 text-xs font-medium rounded-md transition-all duration-150',
         isActive
-          ? 'bg-card text-white shadow-sm border border-slate-700/80'
+          ? 'bg-slate-800 text-white shadow-sm border border-slate-700/80'
           : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40',
         className
       )}
@@ -92,3 +150,5 @@ export function TabContent({ value, className, children, ...props }: TabContentP
     </div>
   );
 }
+
+export default Tabs;

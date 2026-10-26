@@ -9,7 +9,7 @@ export interface DialogProps {
   description?: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
-  maxWidth?: 'sm' | 'md' | 'lg' | 'xl';
+  maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'max-w-sm' | 'max-w-md' | 'max-w-lg' | 'max-w-xl' | 'max-w-2xl';
 }
 
 export function Dialog({
@@ -41,56 +41,62 @@ export function Dialog({
 
   if (!isOpen) return null;
 
-  const maxWidths = {
+  const maxWidths: Record<string, string> = {
     sm: 'max-w-sm',
     md: 'max-w-md',
     lg: 'max-w-lg',
-    xl: 'max-w-2xl',
+    xl: 'max-w-xl',
+    '2xl': 'max-w-2xl',
+    'max-w-sm': 'max-w-sm',
+    'max-w-md': 'max-w-md',
+    'max-w-lg': 'max-w-lg',
+    'max-w-xl': 'max-w-xl',
+    'max-w-2xl': 'max-w-2xl',
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm transition-opacity animate-in fade-in"
+        className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm transition-opacity animate-in fade-in duration-200"
         onClick={onClose}
         aria-hidden="true"
       />
 
-      {/* Modal Box */}
+      {/* Modal Dialog */}
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="dialog-title"
         className={cn(
-          'relative w-full rounded-xl bg-card border border-slate-700/80 shadow-2xl p-6 z-10 transition-all',
-          'animate-in zoom-in-95 duration-150',
-          maxWidths[maxWidth]
+          'relative w-full rounded-xl bg-slate-900 border border-slate-800 shadow-2xl p-6 text-slate-100 z-10 transition-all duration-200 scale-100 animate-in zoom-in-95',
+          maxWidths[maxWidth] || maxWidth
         )}
       >
-        {/* Header */}
-        <div className="flex items-start justify-between pb-3 border-b border-slate-800">
+        <div className="flex items-center justify-between pb-4 border-b border-slate-800/80">
           <div>
             <h2 id="dialog-title" className="text-base font-semibold text-white">
               {title}
             </h2>
-            {description && <p className="text-xs text-slate-400 mt-1">{description}</p>}
+            {description && (
+              <p className="text-xs text-slate-400 mt-0.5">{description}</p>
+            )}
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-white p-1 rounded-md hover:bg-slate-800 transition-colors"
+            className="rounded-lg p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
             aria-label="Close dialog"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Body Content */}
-        <div className="py-4 text-sm text-slate-200">{children}</div>
+        <div className="py-4 text-sm text-slate-300 max-h-[80vh] overflow-y-auto">
+          {children}
+        </div>
 
-        {/* Footer */}
         {footer && (
-          <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-2.5">
+          <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-800/80">
             {footer}
           </div>
         )}
@@ -98,3 +104,5 @@ export function Dialog({
     </div>
   );
 }
+
+export default Dialog;

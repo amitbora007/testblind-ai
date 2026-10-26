@@ -1,9 +1,11 @@
 # TestBlind AI — AI-Powered Software Testing SaaS
 
-[![Status](https://img.shields.io/badge/status-phase--1--specification-blue.svg)](https://github.com/organization/testblind-ai)
+[![Status](https://img.shields.io/badge/status-phase--3--frontend--screens-success.svg)](https://github.com/organization/testblind-ai)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.14-3776AB.svg?logo=python&logoColor=white)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111+-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![React](https://img.shields.io/badge/react-19%20%7C%20typescript-61DAFB.svg?logo=react&logoColor=black)](https://react.dev)
+[![Vite](https://img.shields.io/badge/vite-5.4-646CFF.svg?logo=vite&logoColor=white)](https://vitejs.dev)
+[![Monaco Editor](https://img.shields.io/badge/monaco--editor-VS--Dark-007ACC.svg?logo=visualstudiocode&logoColor=white)](https://microsoft.github.io/monaco-editor/)
 [![Docker](https://img.shields.io/badge/docker-sandboxed--runners-2496ED.svg?logo=docker&logoColor=white)](https://docker.com)
 [![License](https://img.shields.io/badge/license-Proprietary-red.svg)](#)
 

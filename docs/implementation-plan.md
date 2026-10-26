@@ -2,8 +2,8 @@
 
 **Document Version:** 1.1.0  
 **Status:** Approved Master Roadmap  
-**Current Phase:** Phase 2 (Design System & Application Shell) — Completed  
-**Next Phase:** Phase 3 (Core Data Models, Authentication & Multi-Tenancy)  
+**Current Phase:** Phase 3 (Frontend Screens & Workflows) — Completed  
+**Next Phase:** Phase 4 (Core Data Models, Authentication & Multi-Tenancy)  
 
 ---
 
@@ -28,7 +28,16 @@ The development of TestBlind AI is structured into nine sequential engineering p
                                        │
                                        ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ Phase 3: Core Data Models, Authentication & Multi-Tenancy [PLANNED]         │
+│ Phase 3: Frontend Screens & Workflows [COMPLETED]                           │
+│ - 13 production screens: Dashboard, Projects, Repos, Code Lab (Monaco),     │
+│   Gap Discovery, Incidents, Cases, Scenarios, Runs, Reports, Insights,      │
+│   Integrations, Team & Settings                                             │
+│ - Real browser verification across 5 viewports (320px–1440px)               │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Phase 4: Core Data Models, Authentication & Multi-Tenancy [PLANNED]         │
 │ - PostgreSQL 16 schema, SQLAlchemy models, Alembic migrations               │
 │ - Tenant isolation, RBAC (Owner/Admin/Engineer/Viewer), JWT auth            │
 └──────────────────────────────────────┬──────────────────────────────────────┘
@@ -113,20 +122,35 @@ The development of TestBlind AI is structured into nine sequential engineering p
 
 ---
 
-### Phase 3: Core Data Models, Authentication & Multi-Tenancy (PLANNED)
+### Phase 3: Frontend Screens & Workflows (COMPLETED)
 - **Scope:**
-  - FastAPI backend skeleton (`backend/app`).
-  - PostgreSQL schema and SQLAlchemy models (`Organization`, `User`, `Project`, `TestCase`, `TestScenario`, `ExecutionRun`, `Mutation`, `Incident`).
-  - Alembic migration pipeline.
-  - Multi-tenant tenant context middleware and RBAC enforcement.
-  - Safe ZIP upload handler with Zip-Slip path traversal validation.
+  - Build interactive frontend screens for all 13 core workflows in `frontend/src/pages/`:
+    1. Dashboard (`DashboardPage.tsx`) — TraceAI Studio hierarchy, 4 KPI cards, 12-week stacked bar chart, donut requirement coverage, recent test scenarios table, interactive component state harness, and explicit demo banner.
+    2. Projects (`ProjectsPage.tsx`) — Search, framework filtering, project health metrics, and interactive project creation modal.
+    3. Repository Connection & Upload (`RepositoriesPage.tsx`) — GitHub App OAuth connect flow, branch selector, drag-and-drop ZIP upload with 100MB quota guardrail, and local CLI runner instructions.
+    4. Standalone Code Lab (`CodeLabPage.tsx`) — Monaco code editor with multi-language selector (Python/TS/Go), source code / unit tests / invariant tabs, separate AI suggestions, generated tests, and sandbox execution panels. Desktop side-by-side split view and mobile stacked view.
+    5. Test Gap Discovery (`GapDiscoveryPage.tsx`) — AST mutation testing matrix, operator filter buttons (ROR, AOR, LCR, BSR), surviving mutant inspection drawer with diff viewer, and test synthesis.
+    6. Incident-to-Regression Generation (`IncidentAnalysisPage.tsx`) — Incident intake modal, stack frame parser, AI root-cause hypothesis, and dual-state verification console (State A: Buggy Red vs State B: Fixed Green).
+    7. Test Cases Repository (`TestCasesPage.tsx`) — Catalog with search, status/language filters, creation modal, and real client-side JSON export.
+    8. Test Scenarios Matrix (`TestScenariosPage.tsx`) — Multi-step integration suites linked to requirement codes, step-by-step pipeline visualizer, and creation modal.
+    9. Execution Runs Console (`ExecutionRunsPage.tsx`) — Historical runs table with status pills, duration, trigger source, and slide-over terminal log drawer displaying airgapped container runner output.
+    10. Test Health & Audit Reports (`ReportsPage.tsx`) — Mutation score trends, multi-layer code coverage comparison, flakiness index, and real CSV/JSON export download actions.
+    11. AI Test Intelligence & Insights (`AiInsightsPage.tsx`) — Flaky test predictions (concurrency races, unseeded randoms, timeout risks), redundant test pruning, coverage gap optimizer with one-click test synthesis.
+    12. Integrations Fabric (`IntegrationsPage.tsx`) — Connection cards for GitHub, GitLab, Slack, Jira, configuration modals, and on-premises `testblind-cli` token generator with one-click copy.
+    13. Team & Workspace Settings (`TeamSettingsPage.tsx`) — Organization profile, RBAC member management with invite modal, container runner security quotas (CPU, RAM, 60s hard timeout, `--network=none`, `--read-only`, non-root UID 10001), and API key management.
+  - Wire all 13 screens into `App.tsx` with deep-linking client URL hash sync.
+  - Headless browser verification across 5 responsive breakpoints (320px, 375px, 768px, 1024px, 1440px).
 - **Acceptance Criteria:**
-  - [ ] Running `alembic upgrade head` cleanly applies all tables, indexes, foreign keys, and pgvector extension.
-  - [ ] Auth endpoints (`/api/v1/auth/register`, `/api/v1/auth/login`) issue signed JWT tokens with role claims.
-  - [ ] Multi-tenant isolation is verified: Tenant A cannot read, query, or mutate Tenant B records (100% test coverage).
-  - [ ] Uploading a ZIP containing `../` malicious relative paths is rejected with `400 Bad Request`.
+  - [x] All 13 production screens are implemented and wired in `App.tsx`.
+  - [x] Monaco code editor embedded in Code Lab with multi-language support, split-panel desktop layout, and stacked mobile layout.
+  - [x] All critical controls perform real interactive actions (no blank placeholders or dead buttons).
+  - [x] Demo mode indicator (`DemoModeBanner`) clearly demarcates simulated telemetry from verified sandbox evidence.
+  - [x] `npm run build` compiles with 0 errors and 0 warnings.
+  - [x] Headless Google Chrome tests capture full visual proof across 320px–1440px with zero horizontal scroll overflow.
 
 ---
+
+### Phase 4: Core Data Models, Authentication & Multi-Tenancy (PLANNED)
 
 ### Phase 3: Sandboxed Untrusted Execution Engine (PLANNED)
 - **Scope:**

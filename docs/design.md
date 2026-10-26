@@ -236,3 +236,71 @@ All viewports verified in real browser (Google Chrome Headless):
 - **Mobile Standard (375x812):** [`references/screenshots/mobile_375.png`](file:///home/amit.bora/Downloads/ai/TestBlind%20AI/references/screenshots/mobile_375.png) — Single column card stack, touch-friendly tap targets (>44px).
 - **Mobile Small (320x640):** [`references/screenshots/mobile_320.png`](file:///home/amit.bora/Downloads/ai/TestBlind%20AI/references/screenshots/mobile_320.png) — Zero horizontal overflow, wrapped header controls.
 
+---
+
+## 8. Phase 3 Implemented Screen Architecture & Verification Evidence
+
+In Phase 3, all 13 production frontend screens were fully built, wired into the deep-linking client hash router (`App.tsx`), and verified across 5 viewport breakpoints using headless Google Chrome.
+
+### 8.1 13 Production Screen Specifications
+
+1. **Dashboard (`DashboardPage.tsx`):**
+   - TraceAI Studio benchmark hierarchy with overview cards, 12-week execution bar chart, donut requirement coverage, recent test scenarios table, and interactive state toggling (normal, loading skeleton, empty, error, dialogs, toasts).
+   - Prominent `DemoModeBanner` enforcing separation of simulated telemetry and verified evidence.
+2. **Projects Catalog (`ProjectsPage.tsx`):**
+   - Real-time search, framework filtering, project health cards, and interactive "Create Project" modal with repository URL validation.
+3. **Repository Connection & Upload (`RepositoriesPage.tsx`):**
+   - GitHub App OAuth connector, branch picker, drag-and-drop ZIP archive upload with 100MB file quota enforcement, and local `testblind-cli` instructions.
+4. **Standalone Code Lab (`CodeLabPage.tsx`):**
+   - Embedded `@monaco-editor/react` with VS Dark theme.
+   - Multi-language support (Python/pytest, TypeScript/Vitest, Go/testing).
+   - Input tabs: Source Code, Existing Tests, Target Invariants.
+   - Separate right-hand inspection panels: AI Blindspot Suggestions, Generated Tests, and Container Sandbox Execution Results.
+   - Responsive layout: Desktop split-view (side-by-side 50/50) and mobile stacked layout.
+5. **AI Test Gap Discovery (`GapDiscoveryPage.tsx`):**
+   - AST mutation matrix table with filter buttons for ROR (Relational), AOR (Arithmetic), LCR (Logical), and BSR (Bound Shift) operators.
+   - Surviving mutant inspection drawer with AST diff viewer and synthesized regression tests.
+6. **Incident-to-Regression Test Generation (`IncidentAnalysisPage.tsx`):**
+   - Real incident ingestion intake modal (P0/P1/P2 severity, stack traces, reproduction preconditions).
+   - Dual-state verification console: State A (Buggy Codebase, Expect RED) vs State B (Fixed Codebase, Expect GREEN).
+7. **Test Cases Repository (`TestCasesPage.tsx`):**
+   - Filterable test catalog by framework (pytest, vitest, go), status, and suite.
+   - Interactive Test Case Creation Modal with code snippet builder.
+   - Real client-side JSON export trigger.
+8. **Test Scenarios Matrix (`TestScenariosPage.tsx`):**
+   - End-to-end integration scenario chains linked to requirement codes (REQ-101 .. REQ-104).
+   - Step-by-step pipeline visualizer and scenario creation modal.
+9. **Execution Runs Console (`ExecutionRunsPage.tsx`):**
+   - Historical CI and playground execution table with trigger source, duration, and test counts.
+   - Slide-over terminal log drawer displaying airgapped container runner output.
+10. **Test Health & Audit Reports (`ReportsPage.tsx`):**
+    - Aggregated mutation kill rates, multi-layer code coverage bars, and flakiness rating breakdown.
+    - Export triggers generating actual CSV and JSON downloads in the browser.
+11. **AI Test Intelligence & Insights (`AiInsightsPage.tsx`):**
+    - Flaky test predictor (unseeded random detection, async sleep jitter).
+    - Redundant test pruning (zero mutation kill differential detection).
+    - Boundary gap optimizer with one-click test synthesis.
+12. **Integrations Fabric (`IntegrationsPage.tsx`):**
+    - Connection cards and configuration modals for GitHub, GitLab, Slack, and Jira.
+    - Airgapped CLI runner token generator (`testblind-cli`) with one-click token rotation and clipboard copy.
+13. **Team & Workspace Settings (`TeamSettingsPage.tsx`):**
+    - RBAC member management (Owner, Admin, Engineer, Viewer) with invite modal.
+    - Ephemeral container runner security quotas (CPU vCPU slider, RAM MB, 60s hard timeout, `--network=none`, `--read-only`, non-root UID 10001).
+    - Workspace API keys generator and audit log.
+
+### 8.2 Phase 3 Browser Verification Screenshots
+Captured with Google Chrome Headless and stored in `references/screenshots/phase3/`:
+- [`desktop_1440_dashboard.png`](file:///home/amit.bora/Downloads/ai/TestBlind%20AI/references/screenshots/phase3/desktop_1440_dashboard.png) — 1440x900 Benchmark TraceAI Dashboard
+- [`desktop_1440_code_lab.png`](file:///home/amit.bora/Downloads/ai/TestBlind%20AI/references/screenshots/phase3/desktop_1440_code_lab.png) — 1440x900 Split-panel Monaco Code Lab
+- [`mobile_375_code_lab.png`](file:///home/amit.bora/Downloads/ai/TestBlind%20AI/references/screenshots/phase3/mobile_375_code_lab.png) — 375x812 Stacked mobile Code Lab layout
+- [`desktop_1440_gap_discovery.png`](file:///home/amit.bora/Downloads/ai/TestBlind%20AI/references/screenshots/phase3/desktop_1440_gap_discovery.png) — 1440x900 AST Mutation Matrix
+- [`desktop_1440_incidents.png`](file:///home/amit.bora/Downloads/ai/TestBlind%20AI/references/screenshots/phase3/desktop_1440_incidents.png) — 1440x900 Dual-State Incident Verification
+- [`desktop_1440_test_cases.png`](file:///home/amit.bora/Downloads/ai/TestBlind%20AI/references/screenshots/phase3/desktop_1440_test_cases.png) — 1440x900 Test Case Catalog
+- [`desktop_1440_execution_runs.png`](file:///home/amit.bora/Downloads/ai/TestBlind%20AI/references/screenshots/phase3/desktop_1440_execution_runs.png) — 1440x900 Runner Execution Console
+- [`desktop_1440_reports.png`](file:///home/amit.bora/Downloads/ai/TestBlind%20AI/references/screenshots/phase3/desktop_1440_reports.png) — 1440x900 Mutation & Coverage Analytics
+- [`desktop_1440_ai_insights.png`](file:///home/amit.bora/Downloads/ai/TestBlind%20AI/references/screenshots/phase3/desktop_1440_ai_insights.png) — 1440x900 AI Flakiness & Gap Recommendations
+- [`desktop_1440_integrations.png`](file:///home/amit.bora/Downloads/ai/TestBlind%20AI/references/screenshots/phase3/desktop_1440_integrations.png) — 1440x900 Integrations & CLI Token Generator
+- [`desktop_1440_team_settings.png`](file:///home/amit.bora/Downloads/ai/TestBlind%20AI/references/screenshots/phase3/desktop_1440_team_settings.png) — 1440x900 RBAC & Container Security Quotas
+- [`mobile_320_reports.png`](file:///home/amit.bora/Downloads/ai/TestBlind%20AI/references/screenshots/phase3/mobile_320_reports.png) — 320x568 Ultra-narrow mobile verification
+
+

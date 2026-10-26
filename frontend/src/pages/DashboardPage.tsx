@@ -18,7 +18,8 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { NotificationToast, ToastProps } from '@/components/ui/NotificationToast';
-import { PlusCircle, PlayCircle, ShieldCheck } from 'lucide-react';
+import { DemoModeBanner } from '@/components/common/DemoModeBanner';
+import { PlayCircle, ShieldCheck } from 'lucide-react';
 
 export function DashboardPage() {
   const [viewState, setViewState] = useState<DashboardViewState>('normal');
@@ -46,6 +47,9 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      {/* Explicit Demo Mode Indicator */}
+      <DemoModeBanner />
+
       {/* Interactive Component State Harness */}
       <ComponentStateTester
         viewState={viewState}

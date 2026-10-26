@@ -2,7 +2,20 @@ import React from 'react';
 import { cn } from '@/utils/cn';
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
-  variant?: 'default' | 'primary' | 'success' | 'danger' | 'warning' | 'purple' | 'outline';
+  variant?:
+    | 'default'
+    | 'primary'
+    | 'success'
+    | 'danger'
+    | 'warning'
+    | 'purple'
+    | 'outline'
+    | 'cyan'
+    | 'blue'
+    | 'green'
+    | 'rose'
+    | 'amber'
+    | 'gray';
   size?: 'sm' | 'md';
 }
 
@@ -20,6 +33,12 @@ export function Badge({
     warning: 'bg-amber-950/60 text-amber-300 border-amber-600/40',
     purple: 'bg-purple-950/60 text-purple-300 border-purple-600/40',
     outline: 'bg-transparent text-slate-300 border-slate-700',
+    cyan: 'bg-cyan-950/60 text-cyan-300 border-cyan-600/40',
+    blue: 'bg-blue-950/60 text-blue-300 border-blue-600/40',
+    green: 'bg-emerald-950/60 text-emerald-300 border-emerald-600/40',
+    rose: 'bg-rose-950/60 text-rose-300 border-rose-600/40',
+    amber: 'bg-amber-950/60 text-amber-300 border-amber-600/40',
+    gray: 'bg-slate-800 text-slate-400 border-slate-700',
   };
 
   const sizes = {
@@ -39,3 +58,5 @@ export function Badge({
     />
   );
 }
+
+export default Badge;
