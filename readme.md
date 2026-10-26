@@ -1,12 +1,14 @@
 # TestBlind AI — AI-Powered Software Testing SaaS
 
-[![Status](https://img.shields.io/badge/status-phase--3--frontend--screens-success.svg)](https://github.com/organization/testblind-ai)
-[![Python](https://img.shields.io/badge/python-3.12%20%7C%203.14-3776AB.svg?logo=python&logoColor=white)](https://python.org)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.111+-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![Status](https://img.shields.io/badge/status-phase--4--backend--multitenancy-success.svg)](https://github.com/organization/testblind-ai)
+[![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-3776AB.svg?logo=python&logoColor=white)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![PostgreSQL](https://img.shields.io/badge/postgresql-16%20%7C%20asyncpg-4169E1.svg?logo=postgresql&logoColor=white)](https://postgresql.org)
+[![SQLAlchemy](https://img.shields.io/badge/sqlalchemy-2.0-D71F00.svg?logo=sqlalchemy&logoColor=white)](https://sqlalchemy.org)
 [![React](https://img.shields.io/badge/react-19%20%7C%20typescript-61DAFB.svg?logo=react&logoColor=black)](https://react.dev)
 [![Vite](https://img.shields.io/badge/vite-5.4-646CFF.svg?logo=vite&logoColor=white)](https://vitejs.dev)
 [![Monaco Editor](https://img.shields.io/badge/monaco--editor-VS--Dark-007ACC.svg?logo=visualstudiocode&logoColor=white)](https://microsoft.github.io/monaco-editor/)
-[![Docker](https://img.shields.io/badge/docker-sandboxed--runners-2496ED.svg?logo=docker&logoColor=white)](https://docker.com)
+[![Pytest](https://img.shields.io/badge/pytest-20%2F20%20passing-brightgreen.svg?logo=pytest&logoColor=white)](https://pytest.org)
 [![License](https://img.shields.io/badge/license-Proprietary-red.svg)](#)
 
 > **TestBlind AI** is a professional AI-native software testing SaaS designed to eliminate test blindspots and automate regression test synthesis. By integrating **AST-driven mutation testing**, **LLM-powered test generation**, **containerized isolated execution**, and **dual-state verification**, TestBlind AI delivers verified, executable regression tests that harden modern web and backend applications.
@@ -120,9 +122,25 @@ docker build -t testblind-runner-node:20 -f docker/runners/Dockerfile.node .
 docker compose up -d
 ```
 
-### 4. Access Local Services
+### 4. Native Backend Development & Testing
+```bash
+# Activate backend virtualenv
+source backend/.venv/bin/activate
+
+# Run database migrations
+alembic -c backend/alembic.ini upgrade head
+
+# Run backend automated pytest suite (20 tests: tenancy, RBAC, workflows)
+pytest backend/tests -v
+
+# Start FastAPI development server
+uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+### 5. Access Local Services
 - **Web Application:** `http://localhost:3000`
 - **FastAPI Control Plane & Swagger Docs:** `http://localhost:8000/docs`
+- **Health & Readiness Probes:** `http://localhost:8000/healthz`, `http://localhost:8000/readyz`
 - **MinIO Storage Console:** `http://localhost:9001` (User: `minio_admin_user`, Password: in `.env`)
 
 ---

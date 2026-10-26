@@ -174,18 +174,41 @@ erDiagram
     TEST_CASE ||--o{ REPRO_TEST_LINK : provides_regression
 ```
 
-### 4.1 Core Entity Definitions
-- **organizations:** Tenant root with enterprise licensing, billing, and global settings.
-- **users & user_memberships:** User identities with RBAC roles (`owner`, `admin`, `engineer`, `viewer`).
-- **projects:** Scoped project contexts containing repositories, suites, and execution runs.
-- **repositories:** Metadata for connected GitHub repos (repo URL, default branch, webhook secret, token reference) or ZIP archive identifiers.
-- **test_cases:** Atomic test definitions containing code, language, verification status (`AI_SUGGESTED`, `VERIFIED_EXECUTED`, `EXECUTION_FAILED`), mutation kill stats, and hash.
-- **test_scenarios:** Ordered compositions of test cases mirroring end-to-end user flows or regression modules.
-- **execution_runs:** Master records of run triggers (manual, scheduled, CI webhook, playground), trigger metadata, overall exit code, total duration, and summary stats.
-- **run_steps:** Individual granular steps in a run (AST parse, mutation injection, test run) with exit codes, duration, and log references.
-- **mutations:** Recorded AST mutations (file, line number, operator type, original token, mutated token, status: `KILLED`, `SURVIVED`, `TIMED_OUT`).
-- **incidents:** Intake records for production failures (title, severity, raw stack trace, logs, faulting module, reproduction state).
-- **ai_insights:** Machine-generated optimization recommendations, predicted flaky tests, and blindspot summaries.
+### 4.1 Implemented PostgreSQL Schema (16 Relational Tables)
+The database tier is implemented with PostgreSQL 16, SQLAlchemy 2.0 async ORM, and version-controlled via Alembic migrations (`backend/alembic/versions/001_initial_schema.py`):
+
+1. **`organizations`**: Multi-tenant enterprise boundary (`id`, `name`, `slug`, `billing_tier`, `created_at`, `updated_at`).
+2. **`users`**: Global user identities (`id`, `email`, `hashed_password`, `full_name`, `is_active`, `is_superuser`, timestamps).
+3. **`user_memberships`**: Tenant-scoped membership mapping users to organizations with assigned role (`owner`, `admin`, `engineer`, `viewer`).
+4. **`projects`**: Organization-owned projects (`id`, `organization_id`, `name`, `key`, `description`, timestamps).
+5. **`repositories`**: Connected GitHub/GitLab repositories or uploaded ZIP bundles (`id`, `project_id`, `provider`, `repo_url`, `default_branch`, `auth_token_secret_ref`, `is_active`).
+6. **`scan_jobs`**: AST mutation and gap discovery scan jobs (`id`, `project_id`, `status`, `target_branch`, `commit_sha`, `summary_metrics`).
+7. **`findings`**: Semantic gap findings uncovered during AST scans (`id`, `scan_id`, `file_path`, `line_number`, `severity`, `finding_type`, `description`).
+8. **`mutations`**: Injected code mutations (`id`, `scan_id`, `finding_id`, `file_path`, `line_number`, `operator`, `original_code`, `mutated_code`, `status`: `KILLED`, `SURVIVED`, `TIMED_OUT`, `ERROR`).
+9. **`test_cases`**: Cataloged unit and regression tests (`id`, `project_id`, `title`, `file_path`, `code`, `language`, `status`: `AI_SUGGESTED`, `VERIFIED_EXECUTED`, `EXECUTION_FAILED`, `execution_hash`).
+10. **`test_scenarios`**: Multi-step integration suites mapped to product requirements (`id`, `project_id`, `name`, `requirement_code`, `description`, `is_active`).
+11. **`test_scenario_members`**: Ordered steps linking test cases to scenarios (`scenario_id`, `test_case_id`, `step_order`).
+12. **`execution_runs`**: Ephemeral container execution records (`id`, `project_id`, `trigger_type`, `status`, `exit_code`, `duration_seconds`, `logs`, `runner_metadata`).
+13. **`run_steps`**: Granular execution steps within a run (`id`, `run_id`, `step_order`, `name`, `command`, `exit_code`, `stdout`, `stderr`, `duration_ms`).
+14. **`incidents`**: Production failure intake (`id`, `project_id`, `title`, `severity`, `raw_stack_trace`, `logs`, `faulting_module`, `faulting_line`, `reproduction_state`: `INTAKE`, `REPRODUCED_BUGGY`, `PATCH_VERIFIED`, `PROMOTED`, `generated_test_id`).
+15. **`integration_settings`**: Third-party provider configs (`id`, `organization_id`, `provider`, `config_json`, `is_active`).
+16. **`audit_events`**: Immutable audit logs (`id`, `organization_id`, `user_id`, `action`, `resource_type`, `resource_id`, `metadata_json`).
+
+### 4.2 Multi-Tenant Isolation & Server-Side RBAC Architecture
+- **Tenant Context Verification (`get_tenant_context`):**
+  - Clients provide the active tenant context via `X-Organization-ID` header.
+  - The API **never trusts** client-provided tenant identifiers blindly.
+  - For every protected request, `get_tenant_context` validates that the authenticated `current_user` holds an active record in `user_memberships` for that specific `organization_id`.
+  - Forged tenant headers or attempts to access another organization's workspace immediately abort with `HTTP 403 Forbidden`.
+- **Cross-Tenant Data Scoping:**
+  - All project, repository, scan job, incident, test case, and execution queries filter strictly on tenant-scoped foreign keys (`organization_id` or `project.organization_id == tenant.organization.id`).
+  - Access to resources belonging to other organizations returns `HTTP 404 Not Found` (or `403 Forbidden`), preventing metadata leakage.
+- **Hierarchical RBAC Enforcement (`require_role`):**
+  - Roles follow a strict privilege hierarchy: `owner` (40) > `admin` (30) > `engineer` (20) > `viewer` (10).
+  - `viewer`: Read-only access to dashboards, test suites, reports, and execution logs.
+  - `engineer`: Can create projects, link repos, trigger scans, create test cases/scenarios, and intake incidents.
+  - `admin`: Can configure integrations, manage organization settings, and invite team members.
+  - `owner`: Full administrative control including organization deletion and billing management.
 
 ---
 

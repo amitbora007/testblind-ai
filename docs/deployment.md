@@ -136,17 +136,25 @@ docker compose exec testblind-api alembic upgrade head
 
 #### Backend Setup (Python + FastAPI)
 ```bash
+# 1. Configure local PostgreSQL role and database
+sudo -u postgres psql -c "CREATE USER testblind_admin WITH PASSWORD 'testblind_dev_password_change_me';"
+sudo -u postgres psql -c "CREATE DATABASE testblind_db OWNER testblind_admin;"
+
+# 2. Setup Python 3.12+ virtual environment
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate
 
+# 3. Install dependencies
 pip install -r requirements.txt
-pip install -r requirements-dev.txt
 
-# Run migrations
+# 4. Run database migrations
 alembic upgrade head
 
-# Start FastAPI development server with auto-reload
+# 5. Run automated test suite (tenant isolation, RBAC, API workflows)
+pytest tests -v
+
+# 6. Start FastAPI development server with auto-reload
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
