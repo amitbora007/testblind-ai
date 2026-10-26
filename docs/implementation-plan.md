@@ -1,15 +1,15 @@
 # TestBlind AI — Phased Implementation Plan & Acceptance Criteria
 
-**Document Version:** 1.0.0  
+**Document Version:** 1.1.0  
 **Status:** Approved Master Roadmap  
-**Current Phase:** Phase 1 (Foundation & Specification) — Completed  
-**Next Phase:** Phase 2 (Core Data Models, Authentication & Multi-Tenancy)  
+**Current Phase:** Phase 2 (Design System & Application Shell) — Completed  
+**Next Phase:** Phase 3 (Core Data Models, Authentication & Multi-Tenancy)  
 
 ---
 
 ## 1. Roadmap Overview & Implementation Phases
 
-The development of TestBlind AI is structured into nine sequential engineering phases. To ensure architectural integrity, security of untrusted code execution, and high visual fidelity to the TraceAI Studio benchmark, each phase must satisfy strict acceptance criteria before downstream phases commence.
+The development of TestBlind AI is structured into nine sequential engineering phases:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -20,37 +20,38 @@ The development of TestBlind AI is structured into nine sequential engineering p
                                        │
                                        ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ Phase 2: Core Data Models, Authentication & Multi-Tenancy [PLANNED]         │
+│ Phase 2: Design System & Application Shell [COMPLETED]                      │
+│ - React 19 + TypeScript + Vite + Tailwind CSS design primitives             │
+│ - TraceAI Studio Dashboard benchmark (4 metric cards, stacked bars, donut)  │
+│ - 11 navigation routes, collapsible sidebar, responsive mobile navigation   │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Phase 3: Core Data Models, Authentication & Multi-Tenancy [PLANNED]         │
 │ - PostgreSQL 16 schema, SQLAlchemy models, Alembic migrations               │
 │ - Tenant isolation, RBAC (Owner/Admin/Engineer/Viewer), JWT auth            │
 └──────────────────────────────────────┬──────────────────────────────────────┘
                                        │
                                        ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ Phase 3: Sandboxed Untrusted Execution Engine [PLANNED]                     │
+│ Phase 4: Sandboxed Untrusted Execution Engine [PLANNED]                     │
 │ - Ephemeral container runners (Docker/gVisor), resource quotas, timeout     │
 │ - Zero API execution enforcement, Redis pub/sub live log streaming          │
 └──────────────────────────────────────┬──────────────────────────────────────┘
                                        │
                                        ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ Phase 4: AI Test Gap Discovery & Mutation Testing Pipeline [PLANNED]        │
+│ Phase 5: AI Test Gap Discovery & Mutation Testing Pipeline [PLANNED]        │
 │ - AST parser, operator mutation matrix (ROR, AOR, LCR, BSR)                 │
 │ - Surviving mutant identification, LLM test synthesis & verification        │
 └──────────────────────────────────────┬──────────────────────────────────────┘
                                        │
                                        ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ Phase 5: Incident-to-Regression Pipeline & Dual-State Verification [PLANNED]│
+│ Phase 6: Incident-to-Regression Pipeline & Dual-State Verification [PLANNED]│
 │ - Stacktrace/log parser, fault anchor mapping                               │
 │ - Dual-state verification (reproduce on buggy, pass on fixed)               │
-└──────────────────────────────────────┬──────────────────────────────────────┘
-                                       │
-                                       ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ Phase 6: Dark TraceAI Studio Dashboard & Web Application [PLANNED]          │
-│ - React 19 + TypeScript + Vite + Tailwind CSS                               │
-│ - 4 metric cards, stacked execution bar chart, donut chart, scenario table  │
 └──────────────────────────────────────┬──────────────────────────────────────┘
                                        │
                                        ▼
@@ -79,14 +80,14 @@ The development of TestBlind AI is structured into nine sequential engineering p
 
 ## 2. Phase-by-Phase Scope & Detailed Acceptance Criteria
 
-### Phase 1: Foundation, Specification & Architecture (CURRENT — COMPLETED)
+### Phase 1: Foundation, Specification & Architecture (COMPLETED)
 - **Scope:**
   - Workspace inspection, git initialization, and tool verification.
   - Skill discovery (`ui-ux-pro-max`, `frontend-design`, `modern-web-guidance`, `chrome-dev-tools`).
   - Analysis of visual design benchmark (`references/aitool.jpeg`).
-  - Creation of all canonical root documentation files: `product-spec.md`, `architecture.md`, `design.md`, `bugs.md`, `deployment.md`, `readme.md`, `implementation-plan.md`.
+  - Creation of all canonical documentation files in `docs/`: `product-spec.md`, `architecture.md`, `design.md`, `bugs.md`, `deployment.md`, `readme.md`, `implementation-plan.md`.
 - **Acceptance Criteria:**
-  - [x] All 7 canonical documentation files exist at repository root and are reconciled with each other.
+  - [x] All canonical documentation files exist and are reconciled with each other.
   - [x] Core product workflows (AI Test Gap Discovery, Incident-to-Regression) are exhaustively defined.
   - [x] Sandboxed execution architecture and security defense-in-depth are documented.
   - [x] TraceAI Studio design tokens and responsive breakpoints are specified.
@@ -95,7 +96,24 @@ The development of TestBlind AI is structured into nine sequential engineering p
 
 ---
 
-### Phase 2: Core Data Models, Authentication & Multi-Tenancy (PLANNED)
+### Phase 2: Design System & Application Shell (COMPLETED)
+- **Scope:**
+  - Scaffolding of React 19 + TypeScript + Vite + Tailwind CSS frontend application.
+  - BlindShield Design System primitives: Button, Input, Select, Card, Badge, StatusPill, Table, Tabs, Dialog, NotificationToast, States (Loading, Skeleton, Empty, Error).
+  - TraceAI Studio Application Shell: Collapsible sidebar (11 routes: Dashboard, Projects, Test Gap Discovery, Incident Analysis, Test Cases, Test Scenarios, Execution Runs, Reports, AI Insights, Integrations, Team & Settings), header with breadcrumbs, environment switcher, search palette, date filter, profile badge, and mobile drawer.
+  - Representative Screen: TraceAI Studio Dashboard matching `references/aitool.jpeg` (4 KPI metric cards, 12-week stacked bar chart, requirement coverage donut chart, recent test scenarios table with detail inspector).
+  - Interactive Component State Harness: live toggling between Normal Data, Loading, Empty, Error, Dialog, and Toast states.
+- **Acceptance Criteria:**
+  - [x] BlindShield design system primitives and OLED dark palette fully implemented and typed.
+  - [x] Collapsible desktop sidebar (240px <-> 68px) and mobile slide-over drawer operational.
+  - [x] Dashboard faithfully realizes `references/aitool.jpeg` with high information density and zero visual clutter.
+  - [x] Responsive layout verified in real browser (Google Chrome Headless) across 320px, 375px, 768px, 1024px, and 1440px with zero horizontal scroll overflow.
+  - [x] Component states (Normal, Loading, Empty, Error, Dialog, Toast) interactively switchable and verified.
+  - [x] `npm run build` passes with 0 errors.
+
+---
+
+### Phase 3: Core Data Models, Authentication & Multi-Tenancy (PLANNED)
 - **Scope:**
   - FastAPI backend skeleton (`backend/app`).
   - PostgreSQL schema and SQLAlchemy models (`Organization`, `User`, `Project`, `TestCase`, `TestScenario`, `ExecutionRun`, `Mutation`, `Incident`).

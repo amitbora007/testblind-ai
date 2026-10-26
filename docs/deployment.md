@@ -1,8 +1,8 @@
 # TestBlind AI — Configuration, Deployment & Operations Guide
 
-**Document Version:** 1.0.0  
-**Status:** Approved Operational Baseline  
-**Target Environments:** Local Development, CI/CD Staging, Production Cloud  
+**Document Version:** 1.0.0
+**Status:** Approved Operational Baseline
+**Target Environments:** Local Development, CI/CD Staging, Production Cloud
 
 ---
 
@@ -203,9 +203,9 @@ ENTRYPOINT ["pytest"]
 ## 6. Health Checks, Monitoring & Observability
 
 ### 6.1 Application Health Endpoints
-- **Liveness Probe:** `GET /api/v1/health/live`  
+- **Liveness Probe:** `GET /api/v1/health/live`
   Returns `200 OK` if ASGI server is processing requests.
-- **Readiness Probe:** `GET /api/v1/health/ready`  
+- **Readiness Probe:** `GET /api/v1/health/ready`
   Validates connectivity to PostgreSQL, Redis, and the Docker runner socket. Returns `503 Service Unavailable` if core dependencies are unreachable.
 
 ### 6.2 Metrics & Telemetry

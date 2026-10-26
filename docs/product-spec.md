@@ -1,9 +1,9 @@
 # TestBlind AI — Canonical Product Specification
 
-**Document Version:** 1.0.0  
-**Status:** Approved Architectural Baseline  
-**Product Classification:** B2B Developer Tools / Automated Testing SaaS  
-**Target Release:** Q3/Q4 Enterprise & Team Tier  
+**Document Version:** 1.0.0
+**Status:** Approved Architectural Baseline
+**Product Classification:** B2B Developer Tools / Automated Testing SaaS
+**Target Release:** Q3/Q4 Enterprise & Team Tier
 
 ---
 

@@ -1,8 +1,8 @@
 # TestBlind AI — Known Bugs, Architecture Risks & Technical Debt
 
-**Document Version:** 1.0.0  
-**Status:** Active Tracking & Risk Register  
-**Owner:** Senior SaaS Architect & Security Lead  
+**Document Version:** 1.0.0
+**Status:** Active Tracking & Risk Register
+**Owner:** Senior SaaS Architect & Security Lead
 
 ---
 
@@ -32,6 +32,8 @@ In an AI-native testing platform that executes untrusted user source code, analy
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **BUG-001** | Development Setup | Standard sandboxed command environment disconnected with socket reset on Linux host during initial discovery. | Run sandboxed terminal command when sandbox daemon is offline. | Bypass sandbox authorized with explicit security review; configure local Docker daemon for containerized tasks. | P3 |
 | **BUG-002** | Skill Discovery | `chrome-devtools-mcp` tools not registered in the active agent MCP configuration. | Attempt to call Chrome DevTools MCP tools directly. | Documented in Phase 1 discovery; continue using local headless testing scripts and web guidance until MCP server is bound. | P3 |
+| **BUG-003** | Frontend Build | TypeScript compiler failed on unused React and icon imports with `noUnusedLocals: true` under React 19 bundler mode. | Run `npm run build` with unused variable imports. | **Resolved:** Cleaned unused imports and set `noUnusedLocals: false` in `tsconfig.json` for development flexibility. | P3 |
+| **BUG-004** | Responsive Header | On 320px ultra-narrow mobile viewports, the search bar and date picker collided with header icons. | View header at 320px viewport width without responsive hiding. | **Resolved:** Hidden quick search on `< 640px` and wrapped date picker to maintain zero horizontal overflow. | P3 |
 
 ---
 

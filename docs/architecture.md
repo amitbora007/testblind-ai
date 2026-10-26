@@ -1,8 +1,8 @@
 # TestBlind AI — Technical Architecture & System Design
 
-**Document Version:** 1.0.0  
-**Status:** Approved Architectural Baseline  
-**Architecture Classification:** Distributed Event-Driven Microservices / Sandboxed SaaS  
+**Document Version:** 1.0.0
+**Status:** Approved Architectural Baseline
+**Architecture Classification:** Distributed Event-Driven Microservices / Sandboxed SaaS
 
 ---
 

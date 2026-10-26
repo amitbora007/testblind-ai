@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-canvas-base: #0B1120;
+    --color-canvas-subtle: #0F172A;
+    --color-card-bg: #1E293B;
+    --color-card-elevated: #243048;
+    --color-sidebar-bg: #0D1526;
+    --color-border-subtle: #334155;
+    --color-border-highlight: #475569;
+
+    --color-text-primary: #F8FAFC;
+    --color-text-secondary: #94A3B8;
+    --color-text-muted: #64748B;
+
+    --color-status-passed: #10B981;
+    --color-status-failed: #EF4444;
+    --color-status-skipped: #F59E0B;
+    --color-status-blocked: #F97316;
+    --color-status-ai: #8B5CF6;
+    --color-status-primary: #3B82F6;
+  }
+
+  html {
+    scrollbar-gutter: stable;
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-canvas-base);
+    color: var(--color-text-primary);
+    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    overflow-x: hidden;
+  }
+
+  /* Custom dark scrollbars */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #0B1120;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #475569;
+  }
+
+  /* Accessible Focus Rings */
+  *:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px #0B1120, 0 0 0 4px #3B82F6;
+  }
+}
