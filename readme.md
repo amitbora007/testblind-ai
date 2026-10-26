@@ -86,12 +86,12 @@ flowchart LR
 
 | Document | Purpose & Canonical Scope |
 | :--- | :--- |
-| **[`product-spec.md`](./product-spec.md)** | Canonical product requirements, personas, workflows, functional modules, and NFRs. |
-| **[`architecture.md`](./architecture.md)** | Detailed system architecture, data models, sandboxing security specifications, and API protocols. |
-| **[`design.md`](./design.md)** | Design tokens, TraceAI Studio UI components, responsive layout, and WCAG accessibility standards. |
-| **[`bugs.md`](./bugs.md)** | Architectural risk register, failure modes, verified bugs, and technical debt. |
-| **[`deployment.md`](./deployment.md)** | Complete local setup, Docker Compose configuration, production deployment, and env variables. |
-| **[`implementation-plan.md`](./implementation-plan.md)** | Phased engineering implementation roadmap and detailed acceptance criteria. |
+| **[`product-spec.md`](./docs/product-spec.md)** | Canonical product requirements, personas, workflows, functional modules, and NFRs. |
+| **[`architecture.md`](./docs/architecture.md)** | Detailed system architecture, data models, sandboxing security specifications, and API protocols. |
+| **[`design.md`](./docs/design.md)** | Design tokens, TraceAI Studio UI components, responsive layout, and WCAG accessibility standards. |
+| **[`bugs.md`](./docs/bugs.md)** | Architectural risk register, failure modes, verified bugs, and technical debt. |
+| **[`deployment.md`](./docs/deployment.md)** | Complete local setup, Docker Compose configuration, production deployment, and env variables. |
+| **[`implementation-plan.md`](./docs/implementation-plan.md)** | Phased engineering implementation roadmap and detailed acceptance criteria. |
 
 ---
 
@@ -128,13 +128,14 @@ docker compose up -d
 ## Repository Directory Structure
 
 ```
-├── product-spec.md            # Canonical complete product requirements
-├── architecture.md            # Technical architecture and decisions
-├── design.md                  # Design system and UI/UX behavior
-├── bugs.md                    # Verified bugs, risks, and technical debt
-├── deployment.md              # Configuration, local setup, deployment, operations
 ├── readme.md                  # Project overview and developer instructions
-├── implementation-plan.md     # Phased implementation and acceptance criteria
+├── docs/                      # Canonical project documentation
+│   ├── product-spec.md        # Canonical complete product requirements
+│   ├── architecture.md        # Technical architecture and decisions
+│   ├── design.md              # Design system and UI/UX behavior
+│   ├── bugs.md                # Verified bugs, risks, and technical debt
+│   ├── deployment.md          # Configuration, local setup, deployment, operations
+│   └── implementation-plan.md # Phased implementation and acceptance criteria
 ├── references/
 │   └── aitool.jpeg            # Dark TraceAI Studio UI visual reference benchmark
 ├── docker/
