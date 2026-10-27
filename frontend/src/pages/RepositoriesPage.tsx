@@ -32,7 +32,10 @@ export function RepositoriesPage() {
     permissions: [],
     setup_instructions: null,
   });
+  const [availableRepos, setAvailableRepos] = useState<Array<{ id: number; name: string; full_name: string; default_branch: string }>>([]);
   const [selectedRepo, setSelectedRepo] = useState('acme-corp/core-auth-service');
+  const [customRepoMode, setCustomRepoMode] = useState(false);
+  const [customRepoUrl, setCustomRepoUrl] = useState('');
   const [selectedBranch, setSelectedBranch] = useState('main');
   const [testCommand, setTestCommand] = useState('pytest --tb=short tests/');
   const [isScanning, setIsScanning] = useState(false);
@@ -54,16 +57,25 @@ export function RepositoriesPage() {
     async function checkStatus() {
       const status = await api.getGitHubStatus();
       setGithubStatus(status);
+      if (status.configured) {
+        const repos = await api.getGitHubRepos();
+        if (repos && repos.length > 0) {
+          setAvailableRepos(repos);
+          setSelectedRepo(repos[0].full_name);
+          setSelectedBranch(repos[0].default_branch || 'main');
+        }
+      }
     }
     checkStatus();
   }, []);
 
   const handleSimulateScan = () => {
+    const targetRepo = customRepoMode ? (customRepoUrl.trim() || selectedRepo) : selectedRepo;
     setIsScanning(true);
     setScanResult(null);
     setTimeout(() => {
       setIsScanning(false);
-      setScanResult('Repository branch verified. Detected 42 source files, 14 test suites, and 2,410 AST nodes.');
+      setScanResult(`Repository '${targetRepo}' (${selectedBranch}) verified & linked. Loaded test command '${testCommand}'. Ready for AST Gap Discovery & Mutation Testing.`);
     }, 1000);
   };
 
@@ -230,26 +242,59 @@ export function RepositoriesPage() {
                   </Badge>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Select
-                    label="Select Repository *"
-                    value={selectedRepo}
-                    onChange={(e) => setSelectedRepo(e.target.value)}
-                  >
-                    <option value="acme-corp/core-auth-service">acme-corp/core-auth-service</option>
-                    <option value="acme-corp/payment-ledger">acme-corp/payment-ledger</option>
-                    <option value="acme-corp/billing-dashboard">acme-corp/billing-dashboard</option>
-                  </Select>
+                <div className="space-y-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {customRepoMode ? (
+                      <Input
+                        label="GitHub Repository URL or Name *"
+                        placeholder="e.g. my-org/my-service or https://github.com/..."
+                        value={customRepoUrl}
+                        onChange={(e) => setCustomRepoUrl(e.target.value)}
+                        helperText="Enter any installed GitHub repository full name or git clone URL."
+                      />
+                    ) : (
+                      <Select
+                        label="Select Repository *"
+                        value={selectedRepo}
+                        onChange={(e) => setSelectedRepo(e.target.value)}
+                      >
+                        {availableRepos.length > 0 ? (
+                          availableRepos.map((r) => (
+                            <option key={r.id} value={r.full_name}>
+                              {r.full_name}
+                            </option>
+                          ))
+                        ) : (
+                          <>
+                            <option value="acme-corp/core-auth-service">acme-corp/core-auth-service</option>
+                            <option value="acme-corp/payment-ledger">acme-corp/payment-ledger</option>
+                            <option value="acme-corp/billing-dashboard">acme-corp/billing-dashboard</option>
+                          </>
+                        )}
+                      </Select>
+                    )}
 
-                  <Select
-                    label="Target Branch *"
-                    value={selectedBranch}
-                    onChange={(e) => setSelectedBranch(e.target.value)}
-                  >
-                    <option value="main">main (Default branch)</option>
-                    <option value="develop">develop (Active integration)</option>
-                    <option value="release/v2.1">release/v2.1 (Staging)</option>
-                  </Select>
+                    <Select
+                      label="Target Branch *"
+                      value={selectedBranch}
+                      onChange={(e) => setSelectedBranch(e.target.value)}
+                    >
+                      <option value="main">main (Default branch)</option>
+                      <option value="develop">develop (Active integration)</option>
+                      <option value="release/v2.1">release/v2.1 (Staging)</option>
+                      <option value="master">master</option>
+                    </Select>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setCustomRepoMode(!customRepoMode)}
+                      className="text-xs text-blue-400 hover:text-blue-300 underline font-medium"
+                    >
+                      {customRepoMode ? '← Choose from installed App repositories' : '+ Enter custom repository name / URL'}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -1,11 +1,23 @@
+import os
+from pathlib import Path
 from typing import List, Union
 from pydantic import AnyHttpUrl, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+_backend_dir = Path(__file__).resolve().parent.parent.parent  # /backend
+_root_dir = _backend_dir.parent
+
+_env_files = (
+    str(_backend_dir / ".env"),
+    str(_root_dir / ".env"),
+    ".env",
+    "backend/.env",
+)
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_env_files,
         env_file_encoding="utf-8",
         case_sensitive=True,
         extra="ignore",

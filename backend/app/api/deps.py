@@ -122,6 +122,57 @@ async def get_tenant_context(
     )
 
 
+async def get_optional_tenant_context(
+    token_auth: Annotated[Optional[HTTPAuthorizationCredentials], Depends(security_scheme)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    x_organization_id: Annotated[Optional[str], Header()] = None,
+) -> Optional[TenantContext]:
+    """Resolves TenantContext if valid bearer credentials are provided; returns None otherwise."""
+    if not token_auth or not token_auth.credentials:
+        return None
+
+    payload = decode_access_token(token_auth.credentials)
+    if not payload or "sub" not in payload:
+        return None
+
+    try:
+        user_id = uuid.UUID(payload["sub"])
+    except (ValueError, TypeError):
+        return None
+
+    query = select(User).where(User.id == user_id, User.is_active.is_(True))
+    result = await db.execute(query)
+    user = result.scalar_one_or_none()
+    if not user:
+        return None
+
+    target_org_id: Optional[uuid.UUID] = None
+    if x_organization_id:
+        try:
+            target_org_id = uuid.UUID(x_organization_id)
+        except ValueError:
+            return None
+
+    mem_query = (
+        select(UserMembership)
+        .where(UserMembership.user_id == user.id)
+        .options(selectinload(UserMembership.organization))
+    )
+    if target_org_id:
+        mem_query = mem_query.where(UserMembership.organization_id == target_org_id)
+
+    membership = (await db.execute(mem_query)).scalar_one_or_none()
+    if not membership:
+        return None
+
+    return TenantContext(
+        organization_id=membership.organization_id,
+        organization=membership.organization,
+        role=membership.role,
+        user=user,
+    )
+
+
 def require_role(min_role: RoleEnum):
     """Dependency factory enforcing minimum RBAC permission level."""
 

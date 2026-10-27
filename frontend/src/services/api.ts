@@ -373,6 +373,20 @@ export const api = {
     }
   },
 
+  async getGitHubRepos(): Promise<Array<{ id: number; name: string; full_name: string; default_branch: string }>> {
+    try {
+      const res = await fetch(`${API_BASE}/integrations/github/repos`, {
+        headers: getHeaders(),
+      });
+      if (!res.ok) {
+        return [];
+      }
+      return await res.json();
+    } catch {
+      return [];
+    }
+  },
+
   // Repository ZIP Upload
   async uploadRepositoryZip(projectId: string, file: File): Promise<ZipUploadResult> {
     const formData = new FormData();
