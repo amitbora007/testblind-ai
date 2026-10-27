@@ -215,7 +215,113 @@ export interface IncidentPromoteResult {
   message: string;
 }
 
+export interface AuthTokenResponse {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+}
+
+export interface UserOrganizationMembership {
+  organization_id: string;
+  organization_name: string;
+  organization_slug: string;
+  role: string;
+}
+
+export interface CurrentUserProfile {
+  id: string;
+  email: string;
+  full_name: string;
+  is_active: boolean;
+  is_superuser: boolean;
+  created_at: string;
+  memberships: UserOrganizationMembership[];
+}
+
 export const api = {
+  // Authentication & Session
+  async login(credentials: { email: string; password: string }): Promise<AuthTokenResponse> {
+    const res = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(credentials),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Authentication failed' }));
+      throw new Error(err.detail || 'Invalid email or password');
+    }
+    const data: AuthTokenResponse = await res.json();
+    localStorage.setItem('tb_auth_token', data.access_token);
+    localStorage.removeItem('tb_demo_mode');
+
+    try {
+      const profile = await this.getCurrentUser();
+      if (profile.memberships && profile.memberships.length > 0) {
+        localStorage.setItem('tb_active_org_id', profile.memberships[0].organization_id);
+      }
+    } catch {
+      // Profile load is best-effort on initial token issue
+    }
+    return data;
+  },
+
+  async register(data: {
+    email: string;
+    password: string;
+    full_name: string;
+    organization_name?: string;
+  }): Promise<AuthTokenResponse> {
+    const res = await fetch(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Registration failed' }));
+      throw new Error(err.detail || 'Registration failed');
+    }
+    const tokenData: AuthTokenResponse = await res.json();
+    localStorage.setItem('tb_auth_token', tokenData.access_token);
+    localStorage.removeItem('tb_demo_mode');
+
+    try {
+      const profile = await this.getCurrentUser();
+      if (profile.memberships && profile.memberships.length > 0) {
+        localStorage.setItem('tb_active_org_id', profile.memberships[0].organization_id);
+      }
+    } catch {
+      // Profile load is best-effort on initial token issue
+    }
+    return tokenData;
+  },
+
+  async getCurrentUser(): Promise<CurrentUserProfile> {
+    const token = localStorage.getItem('tb_auth_token');
+    if (!token) {
+      throw new Error('No authentication token found');
+    }
+    const res = await fetch(`${API_BASE}/auth/me`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) {
+        localStorage.removeItem('tb_auth_token');
+        localStorage.removeItem('tb_active_org_id');
+      }
+      throw new Error(`Failed to fetch user profile (HTTP ${res.status})`);
+    }
+    return await res.json();
+  },
+
+  logout(): void {
+    localStorage.removeItem('tb_auth_token');
+    localStorage.removeItem('tb_active_org_id');
+    localStorage.removeItem('tb_demo_mode');
+  },
+
   // GitHub Integration
   async getGitHubStatus(): Promise<GitHubStatusResponse> {
     try {

@@ -103,6 +103,7 @@ flowchart LR
 | **[`design.md`](./docs/design.md)** | Design tokens, TraceAI Studio UI components, responsive layout, and WCAG accessibility standards. |
 | **[`bugs.md`](./docs/bugs.md)** | Architectural risk register, failure modes, verified bugs, and technical debt. |
 | **[`deployment.md`](./docs/deployment.md)** | Complete local setup, Docker Compose configuration, production deployment, and env variables. |
+| **[`runbook.md`](./docs/runbook.md)** | Production operations, SOPs, health probes, RBAC onboarding, and troubleshooting guide. |
 | **[`implementation-plan.md`](./docs/implementation-plan.md)** | Phased engineering implementation roadmap and detailed acceptance criteria. |
 
 ---

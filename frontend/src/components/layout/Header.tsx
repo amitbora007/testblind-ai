@@ -9,8 +9,10 @@ import {
   Layers,
   User,
   ShieldCheck,
+  LogOut,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { CurrentUserProfile } from '@/services/api';
 
 export interface HeaderProps {
   currentRouteTitle: string;
@@ -19,6 +21,9 @@ export interface HeaderProps {
   onDateRangeChange: (range: string) => void;
   onSearchOpen?: () => void;
   notificationCount?: number;
+  currentUser?: CurrentUserProfile | null;
+  isDemoMode?: boolean;
+  onLogout?: () => void;
 }
 
 export function Header({
@@ -28,12 +33,30 @@ export function Header({
   onDateRangeChange,
   onSearchOpen,
   notificationCount = 3,
+  currentUser,
+  isDemoMode = false,
+  onLogout,
 }: HeaderProps) {
   const [isEnvMenuOpen, setIsEnvMenuOpen] = useState(false);
   const [currentEnv, setCurrentEnv] = useState('Production Cluster');
 
   const [isDateMenuOpen, setIsDateMenuOpen] = useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const dateRanges = ['Last 24 Hours', 'Last 7 Days', 'Last 30 Days', 'Last 90 Days'];
+
+  const initials = currentUser?.full_name
+    ? currentUser.full_name
+        .split(' ')
+        .map((n) => n[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2)
+    : isDemoMode
+    ? 'DM'
+    : 'QA';
+
+  const userRole = currentUser?.memberships?.[0]?.role?.toUpperCase() || (isDemoMode ? 'DEMO' : 'OWNER');
+  const orgName = currentUser?.memberships?.[0]?.organization_name || (isDemoMode ? 'Demo Workspace' : 'Acme Corp');
 
   return (
     <header className="h-16 shrink-0 bg-canvas-base/80 backdrop-blur-md border-b border-slate-800/80 px-3 sm:px-4 lg:px-6 flex items-center justify-between sticky top-0 z-20 w-full min-w-0">
@@ -157,11 +180,64 @@ export function Header({
           )}
         </button>
 
-        {/* User Profile Badge */}
-        <div className="flex items-center gap-2 pl-1.5 sm:pl-2 border-l border-slate-800">
-          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-tr from-blue-600 to-purple-600 flex items-center justify-center text-white font-semibold text-xs border border-blue-400/30">
-            QA
-          </div>
+        {/* User Profile Badge & Dropdown */}
+        <div className="relative pl-1.5 sm:pl-2 border-l border-slate-800">
+          <button
+            onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+            className="flex items-center gap-1.5 p-1 rounded-lg hover:bg-slate-800/60 transition-colors focus:outline-none"
+            aria-label="User profile menu"
+          >
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-tr from-blue-600 to-purple-600 flex items-center justify-center text-white font-semibold text-xs border border-blue-400/30">
+              {initials}
+            </div>
+            <ChevronDown className="w-3 h-3 text-slate-400 hidden sm:block" />
+          </button>
+
+          {isUserMenuOpen && (
+            <div className="absolute right-0 mt-2 w-64 rounded-xl bg-card border border-slate-700/80 shadow-2xl p-3 z-30 animate-in fade-in-50 duration-100 space-y-3">
+              <div className="pb-3 border-b border-slate-800 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-white truncate max-w-[150px]">
+                    {currentUser?.full_name || (isDemoMode ? 'Demo Explorer' : 'QA Engineer')}
+                  </span>
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-900/60 text-blue-300 border border-blue-700/50">
+                    {userRole}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 truncate">
+                  {currentUser?.email || (isDemoMode ? 'demo@testblind.local' : 'qa-team@acme.corp')}
+                </p>
+                <p className="text-[11px] text-slate-500 truncate flex items-center gap-1">
+                  <Layers className="w-3 h-3 text-slate-400" />
+                  <span>{orgName}</span>
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <div className="px-2 py-1 text-[11px] font-mono text-slate-400 flex items-center justify-between rounded bg-slate-900/60 border border-slate-800">
+                  <span>Session Mode:</span>
+                  <span className={isDemoMode ? 'text-amber-400 font-semibold' : 'text-emerald-400 font-semibold'}>
+                    {isDemoMode ? 'Demo Tour' : 'Live Backend'}
+                  </span>
+                </div>
+              </div>
+
+              {onLogout && (
+                <div className="pt-2 border-t border-slate-800">
+                  <button
+                    onClick={() => {
+                      setIsUserMenuOpen(false);
+                      onLogout();
+                    }}
+                    className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 transition-colors"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>{isDemoMode ? 'Exit Demo / Sign In' : 'Sign Out'}</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </header>

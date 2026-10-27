@@ -5,13 +5,25 @@ import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { Search } from 'lucide-react';
 
+import { CurrentUserProfile } from '@/services/api';
+
 export interface AppLayoutProps {
   currentRoute: string;
   onRouteChange: (routeId: string) => void;
   children: React.ReactNode;
+  currentUser?: CurrentUserProfile | null;
+  isDemoMode?: boolean;
+  onLogout?: () => void;
 }
 
-export function AppLayout({ currentRoute, onRouteChange, children }: AppLayoutProps) {
+export function AppLayout({
+  currentRoute,
+  onRouteChange,
+  children,
+  currentUser,
+  isDemoMode = false,
+  onLogout,
+}: AppLayoutProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [selectedDateRange, setSelectedDateRange] = useState('Last 30 Days');
@@ -45,6 +57,9 @@ export function AppLayout({ currentRoute, onRouteChange, children }: AppLayoutPr
           selectedDateRange={selectedDateRange}
           onDateRangeChange={setSelectedDateRange}
           onSearchOpen={() => setIsSearchOpen(true)}
+          currentUser={currentUser}
+          isDemoMode={isDemoMode}
+          onLogout={onLogout}
         />
 
         <main className="flex-1 p-3 sm:p-6 lg:p-8 overflow-y-auto overflow-x-hidden min-w-0 w-full">

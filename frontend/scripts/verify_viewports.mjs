@@ -147,8 +147,10 @@ async function run() {
         totalTested++;
         client.consoleErrors = [];
 
-        const targetUrl = `http://127.0.0.1:4173/#${route}`;
         await client.send('Page.navigate', { url: targetUrl });
+        await client.send('Runtime.evaluate', {
+          expression: `try { localStorage.setItem('tb_demo_mode', 'true'); } catch (e) {}`,
+        });
         await sleep(350); // allow DOM rendering and CSS animations to settle
 
         // Evaluate layout metrics and error state
