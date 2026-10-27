@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.v1 import api_router
+from app.api.v1.auth import router as auth_router
 from app.api.v1.health import router as health_root_router
 from app.core.config import settings
 
@@ -55,6 +56,9 @@ if settings.BACKEND_CORS_ORIGINS:
 
 # Root-level health & readiness for container orchestration probes
 app.include_router(health_root_router)
+
+# Direct root alias for auth routes (/auth/login, /auth/register, /auth/me)
+app.include_router(auth_router)
 
 # Versioned API routes (/api/v1)
 app.include_router(api_router, prefix=settings.API_V1_STR)

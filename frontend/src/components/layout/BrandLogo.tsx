@@ -19,9 +19,9 @@ export function BrandLogo({ collapsed = false, className }: BrandLogoProps) {
         >
           <defs>
             <linearGradient id="brandGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stop-color="#06B6D4" />
-              <stop offset="50%" stop-color="#3B82F6" />
-              <stop offset="100%" stop-color="#8B5CF6" />
+              <stop offset="0%" stopColor="#06B6D4" />
+              <stop offset="50%" stopColor="#3B82F6" />
+              <stop offset="100%" stopColor="#8B5CF6" />
             </linearGradient>
           </defs>
           <path

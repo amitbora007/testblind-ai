@@ -94,3 +94,47 @@ async def test_missing_auth_header(client: AsyncClient):
     response = await client.get("/api/v1/auth/me")
     assert response.status_code == 401
     assert "Authentication token is missing" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_direct_root_auth_endpoints(client: AsyncClient):
+    """Verify that root /auth/register, /auth/login, and /auth/me alias endpoints work identically."""
+    uid = uuid.uuid4().hex[:6]
+    email = f"root-alias-{uid}@testblind.ai"
+    password = "RootPassword2026!"
+
+    # 1. Register via /auth/register
+    reg_res = await client.post(
+        "/auth/register",
+        json={
+            "email": email,
+            "password": password,
+            "full_name": "Root Alias User",
+            "organization_name": "Root Org",
+        },
+    )
+    assert reg_res.status_code == 201
+    reg_data = reg_res.json()
+    assert "access_token" in reg_data
+    token = reg_data["access_token"]
+
+    # 2. Login via /auth/login
+    login_res = await client.post(
+        "/auth/login",
+        json={"email": email, "password": password},
+    )
+    assert login_res.status_code == 200
+    login_data = login_res.json()
+    assert "access_token" in login_data
+
+    # 3. Get profile via /auth/me
+    me_res = await client.get(
+        "/auth/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert me_res.status_code == 200
+    me_data = me_res.json()
+    assert me_data["email"] == email
+    assert me_data["full_name"] == "Root Alias User"
+    assert len(me_data["memberships"]) == 1
+

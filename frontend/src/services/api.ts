@@ -3,17 +3,29 @@
  * Interacts with FastAPI backend under /api/v1
  */
 
-const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+const getApiBase = (): string => {
+  const envUrl = ((import.meta as any).env?.VITE_API_BASE_URL as string | undefined)?.trim();
+  if (!envUrl) {
+    return 'http://localhost:8000/api/v1';
+  }
+  const cleanUrl = envUrl.replace(/\/+$/, '');
+  return cleanUrl.endsWith('/api/v1') ? cleanUrl : `${cleanUrl}/api/v1`;
+};
+
+const API_BASE = getApiBase();
 
 // Default auth headers for demo / authenticated requests
 function getHeaders(orgId?: string): HeadersInit {
   const token = localStorage.getItem('tb_auth_token') || 'demo_token';
-  const org = orgId || localStorage.getItem('tb_active_org_id') || '00000000-0000-0000-0000-000000000000';
-  return {
+  const org = orgId || localStorage.getItem('tb_active_org_id');
+  const headers: Record<string, string> = {
     'Authorization': `Bearer ${token}`,
-    'X-Organization-ID': org,
     'Content-Type': 'application/json',
   };
+  if (org && org !== '00000000-0000-0000-0000-000000000000') {
+    headers['X-Organization-ID'] = org;
+  }
+  return headers;
 }
 
 export interface GitHubStatusResponse {
@@ -248,7 +260,13 @@ export const api = {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: 'Authentication failed' }));
-      throw new Error(err.detail || 'Invalid email or password');
+      let message = 'Invalid email or password';
+      if (typeof err.detail === 'string') {
+        message = err.detail;
+      } else if (Array.isArray(err.detail) && err.detail.length > 0) {
+        message = err.detail.map((d: any) => d.msg || JSON.stringify(d)).join(', ');
+      }
+      throw new Error(message);
     }
     const data: AuthTokenResponse = await res.json();
     localStorage.setItem('tb_auth_token', data.access_token);
@@ -278,7 +296,13 @@ export const api = {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: 'Registration failed' }));
-      throw new Error(err.detail || 'Registration failed');
+      let message = 'Registration failed';
+      if (typeof err.detail === 'string') {
+        message = err.detail;
+      } else if (Array.isArray(err.detail) && err.detail.length > 0) {
+        message = err.detail.map((d: any) => d.msg || JSON.stringify(d)).join(', ');
+      }
+      throw new Error(message);
     }
     const tokenData: AuthTokenResponse = await res.json();
     localStorage.setItem('tb_auth_token', tokenData.access_token);
@@ -311,7 +335,12 @@ export const api = {
         localStorage.removeItem('tb_auth_token');
         localStorage.removeItem('tb_active_org_id');
       }
-      throw new Error(`Failed to fetch user profile (HTTP ${res.status})`);
+      const err = await res.json().catch(() => ({ detail: `Failed to fetch user profile (HTTP ${res.status})` }));
+      let message = `Failed to fetch user profile (HTTP ${res.status})`;
+      if (typeof err.detail === 'string') {
+        message = err.detail;
+      }
+      throw new Error(message);
     }
     return await res.json();
   },
@@ -350,14 +379,18 @@ export const api = {
     formData.append('file', file);
 
     const token = localStorage.getItem('tb_auth_token') || 'demo_token';
-    const org = localStorage.getItem('tb_active_org_id') || '00000000-0000-0000-0000-000000000000';
+    const org = localStorage.getItem('tb_active_org_id');
+
+    const headers: Record<string, string> = {
+      'Authorization': `Bearer ${token}`,
+    };
+    if (org && org !== '00000000-0000-0000-0000-000000000000') {
+      headers['X-Organization-ID'] = org;
+    }
 
     const res = await fetch(`${API_BASE}/projects/${projectId}/repositories/upload-zip`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'X-Organization-ID': org,
-      },
+      headers,
       body: formData,
     });
 

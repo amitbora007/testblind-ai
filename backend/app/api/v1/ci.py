@@ -122,7 +122,7 @@ async def trigger_ci_run(
         project = Project(
             organization_id=org_id,
             name="CI Pipeline Project",
-            key="CI",
+            slug=f"ci-pipeline-{uuid.uuid4().hex[:6]}",
             description=f"Auto-provisioned CI workspace for {payload.repository_url}",
         )
         db.add(project)
