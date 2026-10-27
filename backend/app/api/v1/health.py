@@ -9,6 +9,7 @@ router = APIRouter(tags=["Health"])
 
 
 @router.get("/healthz", response_model=Dict[str, str])
+@router.get("/api/v1/health/live", response_model=Dict[str, str])
 async def health_check() -> Dict[str, str]:
     """Liveness probe: verifies web server is alive."""
     return {
@@ -20,6 +21,7 @@ async def health_check() -> Dict[str, str]:
 
 
 @router.get("/readyz", response_model=Dict[str, str])
+@router.get("/api/v1/health/ready", response_model=Dict[str, str])
 async def readiness_check(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> Dict[str, str]:

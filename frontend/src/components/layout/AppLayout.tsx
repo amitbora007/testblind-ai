@@ -26,7 +26,7 @@ export function AppLayout({ currentRoute, onRouteChange, children }: AppLayoutPr
   );
 
   return (
-    <div className="flex min-h-screen bg-canvas-base text-slate-100">
+    <div className="flex min-h-screen bg-canvas-base text-slate-100 overflow-x-hidden w-full">
       {/* Sidebar Navigation */}
       <Sidebar
         currentRoute={currentRoute}
@@ -38,7 +38,7 @@ export function AppLayout({ currentRoute, onRouteChange, children }: AppLayoutPr
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 w-full overflow-x-hidden">
         <Header
           currentRouteTitle={currentTitle}
           onMobileMenuToggle={() => setIsMobileOpen(true)}
@@ -47,8 +47,8 @@ export function AppLayout({ currentRoute, onRouteChange, children }: AppLayoutPr
           onSearchOpen={() => setIsSearchOpen(true)}
         />
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-          <div className="max-w-7xl mx-auto space-y-6">{children}</div>
+        <main className="flex-1 p-3 sm:p-6 lg:p-8 overflow-y-auto overflow-x-hidden min-w-0 w-full">
+          <div className="max-w-7xl mx-auto space-y-6 min-w-0 w-full">{children}</div>
         </main>
       </div>
 

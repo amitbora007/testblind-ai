@@ -171,12 +171,12 @@ export function IntegrationsPage() {
       </div>
 
       {/* CLI Runner Card */}
-      <Card className="p-5 bg-slate-900/60 border-slate-800">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <Terminal className="w-5 h-5 text-brand-teal" />
-              <h3 className="text-base font-semibold text-slate-100">
+      <Card className="p-4 sm:p-5 bg-slate-900/60 border-slate-800 min-w-0 overflow-hidden">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 min-w-0">
+          <div className="space-y-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-2 min-w-0">
+              <Terminal className="w-5 h-5 text-brand-teal shrink-0" />
+              <h3 className="text-sm sm:text-base font-semibold text-slate-100 break-words">
                 On-Premises testblind-cli Runner Agent
               </h3>
               <Badge variant="purple" size="sm">Airgapped Ready</Badge>
@@ -186,7 +186,7 @@ export function IntegrationsPage() {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
             <Button
               variant="outline"
               size="sm"
@@ -208,8 +208,8 @@ export function IntegrationsPage() {
           </div>
         </div>
 
-        <div className="mt-4 p-3 bg-slate-950 border border-slate-800 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-2 font-mono text-xs">
-          <span className="text-cyan-400 truncate">
+        <div className="mt-4 p-3 bg-slate-950 border border-slate-800 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-2 font-mono text-xs min-w-0 overflow-hidden">
+          <span className="text-cyan-400 break-all select-all min-w-0">
             curl -fsSL https://get.testblind.ai | sh &amp;&amp; testblind auth --token {cliToken}
           </span>
           <span className="text-[11px] text-slate-500 shrink-0">SHA-256 Verified Binary</span>
@@ -217,9 +217,9 @@ export function IntegrationsPage() {
       </Card>
 
       {/* Integration Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 min-w-0">
         {integrations.map((item) => (
-          <Card key={item.id} className="p-5 bg-slate-900/50 border-slate-800 flex flex-col justify-between">
+          <Card key={item.id} className="p-4 sm:p-5 bg-slate-900/50 border-slate-800 flex flex-col justify-between min-w-0 overflow-hidden">
             <div>
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3">

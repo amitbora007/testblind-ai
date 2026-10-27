@@ -225,10 +225,10 @@ ENTRYPOINT ["pytest"]
 ## 6. Health Checks, Monitoring & Observability
 
 ### 6.1 Application Health Endpoints
-- **Liveness Probe:** `GET /api/v1/health/live`
-  Returns `200 OK` if ASGI server is processing requests.
-- **Readiness Probe:** `GET /api/v1/health/ready`
-  Validates connectivity to PostgreSQL, Redis, and the Docker runner socket. Returns `503 Service Unavailable` if core dependencies are unreachable.
+- **Liveness Probes:** `GET /api/v1/health/live` and `GET /healthz`
+  Returns `200 OK` with `{"status": "healthy"}` if ASGI server is actively processing requests.
+- **Readiness Probes:** `GET /api/v1/health/ready` and `GET /readyz`
+  Validates connectivity to PostgreSQL, Redis, and the runner execution environment. Returns `200 OK` when healthy, or `503 Service Unavailable` if core dependencies are degraded. Recovered dependencies dynamically restore `200 OK` readiness status without requiring container restart.
 
 ### 6.2 Metrics & Telemetry
 - **Prometheus Metrics:** Exposed at `/metrics` (request latency histograms, active worker jobs, mutation score velocity, sandbox execution durations).

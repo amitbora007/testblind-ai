@@ -36,23 +36,23 @@ export function Header({
   const dateRanges = ['Last 24 Hours', 'Last 7 Days', 'Last 30 Days', 'Last 90 Days'];
 
   return (
-    <header className="h-16 shrink-0 bg-canvas-base/80 backdrop-blur-md border-b border-slate-800/80 px-4 lg:px-6 flex items-center justify-between sticky top-0 z-20">
+    <header className="h-16 shrink-0 bg-canvas-base/80 backdrop-blur-md border-b border-slate-800/80 px-3 sm:px-4 lg:px-6 flex items-center justify-between sticky top-0 z-20 w-full min-w-0">
       {/* Left: Mobile hamburger & Page Title / Breadcrumbs */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 sm:gap-3 min-w-0">
         <button
           onClick={onMobileMenuToggle}
-          className="lg:hidden p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+          className="lg:hidden p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors shrink-0"
           aria-label="Open navigation menu"
         >
           <Menu className="w-5 h-5" />
         </button>
 
-        <div className="flex items-center gap-2">
-          <span className="hidden sm:inline-block text-xs font-medium text-slate-500">
+        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+          <span className="hidden sm:inline-block text-xs font-medium text-slate-500 shrink-0">
             TestBlind AI
           </span>
-          <span className="hidden sm:inline-block text-xs text-slate-600">/</span>
-          <h1 className="text-base sm:text-lg font-bold text-white tracking-tight">
+          <span className="hidden sm:inline-block text-xs text-slate-600 shrink-0">/</span>
+          <h1 className="text-sm sm:text-lg font-bold text-white tracking-tight truncate max-w-[120px] sm:max-w-none">
             {currentRouteTitle}
           </h1>
         </div>
@@ -96,7 +96,7 @@ export function Header({
       </div>
 
       {/* Right: Actions, Search, Date Range Filter & User Profile */}
-      <div className="flex items-center gap-2.5">
+      <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
         {/* Search trigger button */}
         <button
           onClick={onSearchOpen}
@@ -113,11 +113,13 @@ export function Header({
         <div className="relative">
           <button
             onClick={() => setIsDateMenuOpen(!isDateMenuOpen)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 hover:text-white hover:border-slate-700 text-xs font-medium transition-colors"
+            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 hover:text-white hover:border-slate-700 text-xs font-medium transition-colors"
+            title={`Date range: ${selectedDateRange}`}
+            aria-label="Filter date range"
           >
-            <Calendar className="w-3.5 h-3.5 text-blue-400" />
-            <span className="whitespace-nowrap">{selectedDateRange}</span>
-            <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+            <Calendar className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+            <span className="hidden sm:inline whitespace-nowrap">{selectedDateRange}</span>
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
           </button>
 
           {isDateMenuOpen && (
@@ -146,18 +148,18 @@ export function Header({
 
         {/* Notification Bell */}
         <button
-          className="relative p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+          className="relative p-1.5 sm:p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
           aria-label="View notifications"
         >
           <Bell className="w-4 h-4" />
           {notificationCount > 0 && (
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-blue-500 shadow-glow-primary" />
+            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-blue-500 shadow-glow-primary" />
           )}
         </button>
 
         {/* User Profile Badge */}
-        <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-purple-600 flex items-center justify-center text-white font-semibold text-xs border border-blue-400/30">
+        <div className="flex items-center gap-2 pl-1.5 sm:pl-2 border-l border-slate-800">
+          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-tr from-blue-600 to-purple-600 flex items-center justify-center text-white font-semibold text-xs border border-blue-400/30">
             QA
           </div>
         </div>

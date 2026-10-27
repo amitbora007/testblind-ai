@@ -5,7 +5,7 @@ from typing import Tuple
 # Regex patterns for sensitive secret and PII detection
 AWS_KEY_PATTERN = re.compile(r"\b(AKIA[0-9A-Z]{16})\b")
 TOKEN_PATTERN = re.compile(
-    r"\b(ghp_[0-9a-zA-Z]{36}|glpat-[0-9a-zA-Z\-]{20}|tb_live_[0-9a-zA-Z_]{10,40}|tb_[0-9a-zA-Z_]{10,40}|sk-[0-9a-zA-Z]{20,})\b"
+    r"\b(ghp_[0-9a-zA-Z]{20,60}|github_pat_[0-9a-zA-Z_]{20,100}|glpat-[0-9a-zA-Z\-]{15,50}|tb_live_[0-9a-zA-Z_]{10,50}|tb_[0-9a-zA-Z_]{10,50}|sk-[0-9a-zA-Z]{20,})\b"
 )
 BEARER_PATTERN = re.compile(r"Bearer\s+([A-Za-z0-9\-\._~\+\/]{16,}=*)")
 JWT_PATTERN = re.compile(
