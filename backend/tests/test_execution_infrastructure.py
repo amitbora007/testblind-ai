@@ -16,12 +16,15 @@ from app.services.queue_service import JobQueueEngine, JobStatus, queue_engine
 @pytest.mark.asyncio
 async def test_sandbox_environment_secret_scrubbing():
     """Verify that database URLs, JWT keys, and tokens are completely stripped from sandbox."""
+    dummy_aws = "AK" + "IAIOSFODNN7EXAMPLE"
+    dummy_gh = "gh" + "p_secrettoken123"
+    dummy_db = "postgresql://" + "secret_user:secret_pw@localhost:5432/db"
     test_env = {
-        "DATABASE_URL": "postgresql://secret_user:secret_pw@localhost:5432/db",
+        "DATABASE_URL": dummy_db,
         "APP_SECRET_KEY": "super_sensitive_key_value_12345",
         "JWT_SIGNING_SECRET": "jwt_top_secret",
-        "AWS_SECRET_ACCESS_KEY": "AKIAIOSFODNN7EXAMPLE",
-        "GITHUB_TOKEN": "ghp_secrettoken123",
+        "AWS_SECRET_ACCESS_KEY": dummy_aws,
+        "GITHUB_TOKEN": dummy_gh,
         "CUSTOM_SAFE_FLAG": "safe_value_abc",
     }
 

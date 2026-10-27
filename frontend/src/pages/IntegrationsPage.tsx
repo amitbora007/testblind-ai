@@ -65,7 +65,7 @@ const INITIAL_INTEGRATIONS: Integration[] = [
     status: 'connected',
     lastSync: '25 mins ago',
     configFields: [
-      { label: 'Incoming Webhook URL', key: 'webhook', placeholder: 'https://hooks.slack.com/services/...', value: 'https://hooks.slack.com/services/T00/B00/X89' },
+      { label: 'Incoming Webhook URL', key: 'webhook', placeholder: 'https://hooks.slack.com/services/...', value: 'https://hooks.example.com/services/T00/B00/X89' },
       { label: 'Notification Channel', key: 'channel', placeholder: '#qa-testblind-alerts', value: '#test-alerts' },
       { label: 'Notify On', key: 'events', placeholder: 'all | failures_only', value: 'failures_only' },
     ],

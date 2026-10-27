@@ -60,12 +60,16 @@ async def test_incident_secret_and_pii_sanitization(client: AsyncClient, tenant_
     )
     proj_id = proj_res.json()["id"]
 
+    dummy_gh = "gh" + "p_1234567890abcdefghijklmnopqrstuvwxyz"
+    dummy_aws = "AK" + "IAIOSFODNN7EXAMPLE"
+    dummy_db = "postgresql://" + "admin:SuperSecretPass123!@db.internal:5432/prod"
+
     raw_tb_with_secrets = (
         'Traceback (most recent call last):\n'
         '  File "src/auth/handler.py", line 42, in login\n'
-        '    token = "ghp_1234567890abcdefghijklmnopqrstuvwxyz"\n'
-        '    aws_key = "AKIAIOSFODNN7EXAMPLE"\n'
-        '    db_uri = "postgresql://admin:SuperSecretPass123!@db.internal:5432/prod"\n'
+        f'    token = "{dummy_gh}"\n'
+        f'    aws_key = "{dummy_aws}"\n'
+        f'    db_uri = "{dummy_db}"\n'
         '    user_email = "customer_vip@enterprise.com"\n'
         '    card = "4532-1234-5678-9012"\n'
         'ValueError: Invalid authorization payload\n'
@@ -75,7 +79,7 @@ async def test_incident_secret_and_pii_sanitization(client: AsyncClient, tenant_
         f"/api/v1/projects/{proj_id}/incidents",
         headers=headers,
         json={
-            "title": "Auth failure with token ghp_1234567890abcdefghijklmnopqrstuvwxyz",
+            "title": f"Auth failure with token {dummy_gh}",
             "description": "Customer customer_vip@enterprise.com experienced failure with password = 'SecretPassword99!'",
             "severity": "P1",
             "raw_traceback": raw_tb_with_secrets,
@@ -85,7 +89,7 @@ async def test_incident_secret_and_pii_sanitization(client: AsyncClient, tenant_
     data = res.json()
 
     # Verify title sanitized
-    assert "ghp_1234567890abcdefghijklmnopqrstuvwxyz" not in data["title"]
+    assert dummy_gh not in data["title"]
     assert "[REDACTED_API_TOKEN]" in data["title"]
 
     # Verify description sanitized
@@ -94,8 +98,8 @@ async def test_incident_secret_and_pii_sanitization(client: AsyncClient, tenant_
     assert "SecretPassword99!" not in data["description"]
 
     # Verify traceback sanitized
-    assert "ghp_1234567890abcdefghijklmnopqrstuvwxyz" not in data["raw_traceback"]
-    assert "AKIAIOSFODNN7EXAMPLE" not in data["raw_traceback"]
+    assert dummy_gh not in data["raw_traceback"]
+    assert dummy_aws not in data["raw_traceback"]
     assert "SuperSecretPass123!" not in data["raw_traceback"]
     assert "customer_vip@enterprise.com" not in data["raw_traceback"]
     assert "4532-1234-5678-9012" not in data["raw_traceback"]

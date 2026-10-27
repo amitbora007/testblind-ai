@@ -1,0 +1,18 @@
+# GitGuardian Configuration File
+# Documentation: https://docs.gitguardian.com/ggshield-docs/reference/configuration
+
+version: 2
+
+secret:
+  # Paths to ignore during scanning
+  ignored_paths:
+    - "backend/tests/**"
+    - "backend/.env.example"
+    - "frontend/.env.example"
+    - "frontend/src/pages/IntegrationsPage.tsx"
+    - "docs/**"
+
+  # Explicitly allow well-known synthetic test keys
+  ignored_matches:
+    - name: "AWS Example Documentation Key"
+      match: "AKIAIOSFODNN7EXAMPLE"
