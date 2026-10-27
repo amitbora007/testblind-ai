@@ -1,3 +1,12 @@
+import os
+import sys
+from pathlib import Path
+
+# Ensure backend root is in sys.path when invoked from project root or any working directory
+_backend_dir = str(Path(__file__).resolve().parent.parent)
+if _backend_dir not in sys.path:
+    sys.path.insert(0, _backend_dir)
+
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 from fastapi import FastAPI, Request, status
