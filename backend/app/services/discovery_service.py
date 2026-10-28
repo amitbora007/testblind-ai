@@ -95,7 +95,10 @@ class TestDiscoveryService:
         timeout_seconds: int = 30,
     ) -> BaselineTestResult:
         cmd = test_cmd or [sys.executable, "-m", "pytest", "-v", "--tb=short"]
-        cfg = ExecutionSandboxConfig(wall_timeout_seconds=timeout_seconds)
+        cfg = ExecutionSandboxConfig(
+            wall_timeout_seconds=timeout_seconds,
+            custom_env={"PYTHONPATH": f".:{workspace_dir}", "COLUMNS": "80", "LINES": "24"},
+        )
 
         res = await SandboxManager.execute_in_sandbox(
             command=cmd,
@@ -131,7 +134,10 @@ class TestDiscoveryService:
 
         original_content = target_file.read_text(encoding="utf-8")
         cmd = test_cmd or [sys.executable, "-m", "pytest", "-v", "--tb=short"]
-        cfg = ExecutionSandboxConfig(wall_timeout_seconds=timeout_seconds)
+        cfg = ExecutionSandboxConfig(
+            wall_timeout_seconds=timeout_seconds,
+            custom_env={"PYTHONPATH": f".:{workspace_dir}", "COLUMNS": "80", "LINES": "24"},
+        )
 
         try:
             target_file.write_text(mutated_source, encoding="utf-8")

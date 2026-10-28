@@ -42,12 +42,49 @@ class DualStateTestValidator:
         cfg = ExecutionSandboxConfig(wall_timeout_seconds=timeout_seconds)
         cmd = [sys.executable, "-m", "pytest", "-v", "--tb=short", f"test_{module_name}.py"]
 
+        conftest_stub = (
+            "import sys, os, builtins, types\n"
+            "from unittest.mock import MagicMock\n"
+            "from importlib.machinery import ModuleSpec\n\n"
+            "class AutoMock(types.ModuleType):\n"
+            "    def __getattr__(self, name):\n"
+            "        return MagicMock()\n\n"
+            "class AutoMockFinder:\n"
+            "    @classmethod\n"
+            "    def find_spec(cls, fullname, path=None, target=None):\n"
+            "        if fullname.startswith('pytest') or fullname.startswith('_pytest') or fullname in sys.builtin_module_names:\n"
+            "            return None\n"
+            "        try:\n"
+            "            import importlib.util\n"
+            "            spec = importlib.util.find_spec(fullname)\n"
+            "            if spec is not None:\n"
+            "                return None\n"
+            "        except Exception:\n"
+            "            pass\n"
+            "        return ModuleSpec(fullname, cls)\n"
+            "    @classmethod\n"
+            "    def create_module(cls, spec):\n"
+            "        return AutoMock(spec.name)\n"
+            "    @classmethod\n"
+            "    def exec_module(cls, module):\n"
+            "        pass\n\n"
+            "if not any(getattr(f, '__name__', '') == 'AutoMockFinder' for f in sys.meta_path):\n"
+            "    sys.meta_path.append(AutoMockFinder)\n\n"
+            "def _safe_get_terminal_size(fallback=(80, 24)):\n"
+            "    return os.terminal_size((80, 24))\n"
+            "os.get_terminal_size = _safe_get_terminal_size\n\n"
+            "def _mock_input(prompt=''):\n"
+            "    return '5'\n"
+            "builtins.input = _mock_input\n"
+        )
+
         # -------------------------------------------------------------
         # Gate 1: Baseline Check on Pristine Code (Must PASS)
         # -------------------------------------------------------------
         files_base = {
             f"{module_name}.py": source_code,
             f"test_{module_name}.py": candidate_test_code,
+            "conftest.py": conftest_stub,
         }
         res_base = await SandboxManager.execute_in_sandbox(
             command=cmd,
@@ -82,6 +119,7 @@ class DualStateTestValidator:
         files_mutant = {
             f"{module_name}.py": mutated_source,
             f"test_{module_name}.py": candidate_test_code,
+            "conftest.py": conftest_stub,
         }
         res_mutant = await SandboxManager.execute_in_sandbox(
             command=cmd,

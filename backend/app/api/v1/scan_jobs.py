@@ -1,9 +1,11 @@
+import asyncio
 import os
 import shutil
 import sys
 import tempfile
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Annotated, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
@@ -11,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import TenantContext, get_tenant_context, require_role
 from app.core.database import get_db
+from app.models.audit import IntegrationSetting
 from app.models.project import Project, Repository
 from app.models.scan import Finding, Mutation, ScanJob
 from app.models.test import TestCase
@@ -24,6 +27,8 @@ from app.schemas.scan import (
     ScanJobRead,
     SynthesizeMutationResponse,
 )
+from app.services.archive_service import RetentionManager
+from app.services.auto_test_generator import AutoTestGeneratorService
 from app.services.discovery_service import TestDiscoveryService
 from app.services.llm_service import LLMTestSynthesizer
 from app.services.mutation_engine import ASTMutationEngine, MutantSpec
@@ -33,36 +38,203 @@ from app.services.validation_service import DualStateTestValidator
 router = APIRouter(tags=["Scan Jobs & Mutations"])
 
 
-SAMPLE_SOLUTION_CODE = """def calculate_tier_discount(order_total: float, customer_tier: str) -> float:
-    if order_total <= 0:
-        raise ValueError("Order total must be positive")
+async def ensure_project_workspace(
+    db: AsyncSession,
+    project_id: uuid.UUID,
+    organization_id: uuid.UUID,
+) -> str:
+    """
+    Ensures that the repository source code is materialized on disk,
+    git-cloning remote repositories if needed, and ensuring that
+    executable test cases (including auto-generated suites) and
+    test isolation stubs exist.
+    """
+    proj_q = select(Project).where(
+        Project.id == project_id,
+        Project.organization_id == organization_id,
+    )
+    project = (await db.execute(proj_q)).scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
-    if customer_tier == "PLATINUM":
-        if order_total > 500:
-            return 0.25
-        elif order_total > 100:
-            return 0.15
-        return 0.05
-    elif customer_tier == "GOLD":
-        if order_total > 100:
-            return 0.10
-        return 0.02
-    return 0.0
-"""
+    repo_q = select(Repository).where(
+        Repository.project_id == project_id,
+        Repository.organization_id == organization_id,
+    ).order_by(Repository.created_at.desc())
+    repo = (await db.execute(repo_q)).scalars().first()
 
-SAMPLE_TEST_CODE = """import pytest
-from solution import calculate_tier_discount
+    workspace_path = None
+    if repo:
+        if repo.zip_artifact_path and os.path.isdir(repo.zip_artifact_path) and any(os.scandir(repo.zip_artifact_path)):
+            workspace_path = repo.zip_artifact_path
+        elif repo.repo_type == "github" and repo.repo_url:
+            target_dir = RetentionManager.get_repo_storage_path(str(organization_id), str(repo.id))
 
-def test_platinum_high():
-    assert calculate_tier_discount(600, "PLATINUM") == 0.25
+            # Check for OAuth access token
+            setting_q = select(IntegrationSetting).where(
+                IntegrationSetting.organization_id == organization_id,
+                IntegrationSetting.provider == "github",
+                IntegrationSetting.is_enabled == True,
+            )
+            setting = (await db.execute(setting_q)).scalar_one_or_none()
+            access_token = setting.config.get("access_token") if (setting and setting.config) else None
 
-def test_gold_normal():
-    assert calculate_tier_discount(200, "GOLD") == 0.10
+            clone_url = repo.repo_url
+            if access_token and "github.com/" in clone_url:
+                clean_url = clone_url.split("@")[-1] if "@" in clone_url else clone_url.replace("https://", "")
+                clone_url = f"https://x-access-token:{access_token}@{clean_url}"
 
-def test_invalid_negative():
+            if os.path.exists(target_dir):
+                shutil.rmtree(target_dir, ignore_errors=True)
+            target_dir.mkdir(parents=True, exist_ok=True)
+
+            proc = await asyncio.create_subprocess_exec(
+                "git", "clone", "--depth", "1", clone_url, str(target_dir),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+            if proc.returncode != 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Failed to clone GitHub repository from '{repo.repo_url}': {stderr.decode()[:200]}",
+                )
+            repo.zip_artifact_path = str(target_dir)
+            await db.commit()
+            await db.refresh(repo)
+            workspace_path = str(target_dir)
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Codebase files for project '{project.name}' are not available on disk. Please upload your project ZIP or reconnect GitHub.",
+            )
+    else:
+        # Standalone project without VCS connection (e.g. integration test project)
+        import re
+        safe_name = re.sub(r'[^a-zA-Z0-9_]', '_', project.name).lower().strip('_') or "project_module"
+        target_dir = RetentionManager.get_repo_storage_path(str(organization_id), str(project.id))
+        target_dir.mkdir(parents=True, exist_ok=True)
+        workspace_path = str(target_dir)
+
+        src_file = os.path.join(workspace_path, f"{safe_name}.py")
+        if not os.path.exists(src_file):
+            with open(src_file, "w", encoding="utf-8") as f:
+                f.write(f'''def {safe_name}_compute(value: float, factor: float = 1.5) -> float:
+    if value <= 0:
+        raise ValueError("Value must be positive")
+    if value > 50:
+        return value * factor
+    return value + factor
+''')
+
+        tests_dir = os.path.join(workspace_path, "tests")
+        os.makedirs(tests_dir, exist_ok=True)
+        test_file = os.path.join(tests_dir, f"test_{safe_name}.py")
+        if not os.path.exists(test_file):
+            with open(test_file, "w", encoding="utf-8") as f:
+                f.write(f'''import pytest
+from {safe_name} import {safe_name}_compute
+
+def test_{safe_name}_nominal():
+    assert {safe_name}_compute(100.0, 2.0) == 200.0
+
+def test_{safe_name}_boundary():
+    assert {safe_name}_compute(20.0, 5.0) == 25.0
+
+def test_{safe_name}_invalid():
     with pytest.raises(ValueError):
-        calculate_tier_discount(-5, "PLATINUM")
-"""
+        {safe_name}_compute(-10.0)
+''')
+
+    # Validate Python source files exist
+    py_files = TestDiscoveryService.discover_python_files(workspace_path)
+    if not py_files["source_files"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"No Python source files found in workspace for project '{project.name}'.",
+        )
+
+    # Ensure tests directory and conftest.py exist
+    tests_dir = os.path.join(workspace_path, "tests")
+    os.makedirs(tests_dir, exist_ok=True)
+
+    conftest_path = os.path.join(tests_dir, "conftest.py")
+    if not os.path.exists(conftest_path):
+        with open(conftest_path, "w", encoding="utf-8") as f:
+            f.write('''import sys, os, builtins, types
+from unittest.mock import MagicMock
+from importlib.machinery import ModuleSpec
+
+repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if repo_root not in sys.path:
+    sys.path.insert(0, repo_root)
+
+class AutoMock(types.ModuleType):
+    def __getattr__(self, name):
+        return MagicMock()
+
+class AutoMockFinder:
+    @classmethod
+    def find_spec(cls, fullname, path=None, target=None):
+        if fullname.startswith("pytest") or fullname.startswith("_pytest") or fullname in sys.builtin_module_names:
+            return None
+        try:
+            import importlib.util
+            spec = importlib.util.find_spec(fullname)
+            if spec is not None:
+                return None
+        except Exception:
+            pass
+        return ModuleSpec(fullname, cls)
+
+    @classmethod
+    def create_module(cls, spec):
+        return AutoMock(spec.name)
+
+    @classmethod
+    def exec_module(cls, module):
+        pass
+
+if not any(getattr(f, "__name__", "") == "AutoMockFinder" for f in sys.meta_path):
+    sys.meta_path.append(AutoMockFinder)
+
+def _safe_get_terminal_size(fallback=(80, 24)):
+    return os.terminal_size((80, 24))
+os.get_terminal_size = _safe_get_terminal_size
+
+def _mock_input(prompt=""):
+    return "5"
+builtins.input = _mock_input
+''')
+
+    # If no test files on disk, materialize from DB or auto-generate
+    if not py_files["test_files"]:
+        tc_q = select(TestCase).where(
+            TestCase.project_id == project_id,
+            TestCase.organization_id == organization_id,
+        )
+        existing_cases = (await db.execute(tc_q)).scalars().all()
+        if existing_cases:
+            test_file_path = os.path.join(tests_dir, "test_auto_generated.py")
+            combined = "# ====================================================================\n"
+            combined += "# TestBlind AI Auto-Generated Test Suite\n"
+            combined += "# ====================================================================\nimport pytest\n\n"
+            for c in existing_cases:
+                code_snippet = c.code.replace("import pytest\n", "") if "import pytest" in c.code else c.code
+                combined += f"\n{code_snippet.strip()}\n"
+            with open(test_file_path, "w", encoding="utf-8") as f:
+                f.write(combined)
+        else:
+            await AutoTestGeneratorService.analyze_and_generate(
+                project_id=project.id,
+                organization_id=organization_id,
+                db=db,
+                create_test_cases=True,
+                create_scenarios=True,
+                force=True,
+            )
+
+    return workspace_path
 
 
 async def _run_scan_pipeline(
@@ -73,34 +245,8 @@ async def _run_scan_pipeline(
     commit_hash: Optional[str],
     db: AsyncSession,
 ) -> ScanJob:
-    # 1. Check if linked repository with uploaded zip exists
-    repo_q = select(Repository).where(
-        Repository.project_id == project_id,
-        Repository.organization_id == organization_id,
-    ).order_by(Repository.created_at.desc())
-    repo = (await db.execute(repo_q)).scalars().first()
-
-    scan_dir = None
-    cleanup_temp = False
-
-    if repo and repo.zip_artifact_path and os.path.isdir(repo.zip_artifact_path):
-        scan_dir = repo.zip_artifact_path
-    else:
-        # Create ephemeral sample project fixture
-        scan_dir = tempfile.mkdtemp(prefix="tb_scan_fixture_")
-        cleanup_temp = True
-        tests_dir = os.path.join(scan_dir, "tests")
-        os.makedirs(tests_dir, exist_ok=True)
-        with open(os.path.join(scan_dir, "solution.py"), "w", encoding="utf-8") as f:
-            f.write(SAMPLE_SOLUTION_CODE)
-        with open(os.path.join(tests_dir, "test_solution.py"), "w", encoding="utf-8") as f:
-            f.write(SAMPLE_TEST_CODE)
-
-    try:
-        summary = await TestDiscoveryService.run_mutation_scan_on_workspace(scan_dir, max_mutants=20)
-    finally:
-        if cleanup_temp and scan_dir:
-            shutil.rmtree(scan_dir, ignore_errors=True)
+    scan_dir = await ensure_project_workspace(db, project_id, organization_id)
+    summary = await TestDiscoveryService.run_mutation_scan_on_workspace(scan_dir, max_mutants=20)
 
     now = datetime.now(timezone.utc)
     scan_job = ScanJob(
@@ -364,6 +510,38 @@ async def synthesize_mutation_test(
     if not mutation:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mutation not found")
 
+    # Locate actual source file from repository workspace
+    repo_q = select(Repository).where(
+        Repository.project_id == mutation.project_id,
+        Repository.organization_id == tenant.organization_id,
+    ).order_by(Repository.created_at.desc())
+    repo = (await db.execute(repo_q)).scalars().first()
+
+    source_code = ""
+    module_name = "solution"
+    if repo and repo.zip_artifact_path and os.path.isdir(repo.zip_artifact_path):
+        target_path = Path(repo.zip_artifact_path) / mutation.file_path
+        if target_path.exists():
+            source_code = target_path.read_text(encoding="utf-8")
+            module_name = target_path.stem
+
+    if not source_code:
+        proj_dir = RetentionManager.get_repo_storage_path(str(tenant.organization_id), str(mutation.project_id))
+        target_path = proj_dir / mutation.file_path
+        if target_path.exists():
+            source_code = target_path.read_text(encoding="utf-8")
+            module_name = target_path.stem
+
+    if not source_code:
+        source_code = mutation.original_code
+        module_name = Path(mutation.file_path).stem if mutation.file_path else "solution"
+
+    mutated_source = (
+        source_code.replace(mutation.original_code, mutation.mutated_code, 1)
+        if mutation.original_code in source_code
+        else mutation.mutated_code
+    )
+
     # Reconstruct mutant specification
     mut_spec = MutantSpec(
         id=str(mutation.id),
@@ -376,18 +554,18 @@ async def synthesize_mutation_test(
         original_snippet=mutation.original_code,
         mutated_snippet=mutation.mutated_code,
         description=f"Mutation {mutation.operator} at line {mutation.line_number}",
-        mutated_source=SAMPLE_SOLUTION_CODE.replace(mutation.original_code, mutation.mutated_code, 1),
+        mutated_source=mutated_source,
     )
 
-    gap = LLMTestSynthesizer.explain_gap(SAMPLE_SOLUTION_CODE, mut_spec)
-    synthesized_test = LLMTestSynthesizer.synthesize_killing_test(SAMPLE_SOLUTION_CODE, mut_spec)
+    gap = LLMTestSynthesizer.explain_gap(source_code, mut_spec)
+    synthesized_test = LLMTestSynthesizer.synthesize_killing_test(source_code, mut_spec, module_name=module_name)
 
     # Perform dual-state validation
-    mutated_source = SAMPLE_SOLUTION_CODE.replace(mutation.original_code, mutation.mutated_code, 1)
     outcome = await DualStateTestValidator.validate_candidate_test(
-        source_code=SAMPLE_SOLUTION_CODE,
+        source_code=source_code,
         mutated_source=mutated_source,
         candidate_test_code=synthesized_test,
+        module_name=module_name,
     )
 
     # Update mutation record

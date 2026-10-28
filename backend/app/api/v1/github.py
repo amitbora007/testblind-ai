@@ -533,4 +533,12 @@ async def link_github_repo_to_project(
     await db.commit()
     await db.refresh(repo)
 
+    # Automatically materialize and provision the repository workspace
+    try:
+        from app.api.v1.scan_jobs import ensure_project_workspace
+        await ensure_project_workspace(db, project.id, tenant.organization_id)
+        await db.refresh(repo)
+    except Exception:
+        pass
+
     return RepoRead.model_validate(repo)
