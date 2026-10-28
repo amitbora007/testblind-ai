@@ -497,7 +497,7 @@ export function GapDiscoveryPage() {
       </div>
 
       {/* Filter and Operator Toolbar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 bg-slate-900/60 rounded-xl border border-slate-800">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3 bg-slate-900/70 rounded-xl border border-slate-800 shadow-sm">
         <div className="w-full sm:w-80">
           <Input
             placeholder="Search mutants by file, operator, token..."
@@ -507,7 +507,7 @@ export function GapDiscoveryPage() {
           />
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center gap-2.5">
           {/* Operator Filter Tabs */}
           <div className="inline-flex rounded-lg bg-slate-950 p-0.5 border border-slate-800 text-xs">
             {['all', 'ROR', 'AOR', 'LCR', 'BSR'].map((op) => (
@@ -537,6 +537,21 @@ export function GapDiscoveryPage() {
             <option value="timeout">Timeout Only</option>
             <option value="equivalent">Equivalent Only</option>
           </Select>
+
+          {(searchQuery || operatorFilter !== 'all' || statusFilter !== 'all') && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setSearchQuery('');
+                setOperatorFilter('all');
+                setStatusFilter('all');
+              }}
+              className="text-xs text-slate-400 hover:text-white px-2 py-1 h-auto"
+            >
+              Reset
+            </Button>
+          )}
         </div>
       </div>
 

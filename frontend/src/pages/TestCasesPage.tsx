@@ -383,17 +383,22 @@ export function TestCasesPage() {
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="flex flex-col lg:flex-row items-center justify-between gap-3 p-3 bg-slate-900/60 rounded-xl border border-slate-800">
+      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 p-3 bg-slate-900/70 rounded-xl border border-slate-800 shadow-sm">
         <div className="w-full lg:w-72">
           <Input
-            placeholder="Search by name, file, or code..."
+            placeholder="Search test cases by name, file, code..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             leftIcon={<Search className="w-4 h-4 text-slate-400" />}
           />
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex items-center gap-1.5 text-xs text-slate-400 mr-1 hidden sm:flex">
+            <Filter className="w-3.5 h-3.5 text-slate-400" />
+            <span>Filters:</span>
+          </div>
+
           <Select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
@@ -439,6 +444,23 @@ export function TestCasesPage() {
             <option value="commit">Group: Commit</option>
             <option value="incident">Group: Incident</option>
           </Select>
+
+          {(searchQuery || statusFilter !== 'all' || reviewFilter !== 'all' || testTypeFilter !== 'all' || groupBy !== 'none') && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setSearchQuery('');
+                setStatusFilter('all');
+                setReviewFilter('all');
+                setTestTypeFilter('all');
+                setGroupBy('none');
+              }}
+              className="text-xs text-slate-400 hover:text-white px-2 py-1 h-auto"
+            >
+              Reset
+            </Button>
+          )}
         </div>
       </div>
 

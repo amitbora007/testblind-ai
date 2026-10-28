@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Select } from '@/components/ui/Select';
 import { Dialog } from '@/components/ui/Dialog';
+import { Pagination } from '@/components/ui/Pagination';
 import { DemoModeBanner } from '@/components/common/DemoModeBanner';
 import { api, isDemoActive, AiInsightItem } from '@/services/api';
 import {
@@ -165,11 +166,22 @@ export function AiInsightsPage() {
     }
   }, []);
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(3);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedType, selectedSeverity]);
+
   const filteredInsights = insights.filter((item) => {
     const matchesType = selectedType === 'all' || item.type === selectedType;
     const matchesSev = selectedSeverity === 'all' || item.severity === selectedSeverity;
     return matchesType && matchesSev && item.status !== 'dismissed';
   });
+
+  const totalItems = filteredInsights.length;
+  const startIndex = (currentPage - 1) * pageSize;
+  const paginatedInsights = filteredInsights.slice(startIndex, startIndex + pageSize);
 
   const handleApplyFix = (id: string, actionDesc: string) => {
     setInsights((prev) =>
@@ -228,41 +240,53 @@ export function AiInsightsPage() {
       </div>
 
       {/* Filter and stats row */}
-      <Card className="p-4 bg-slate-900/60 border-slate-800">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2 text-xs text-slate-400">
-              <Filter className="w-3.5 h-3.5" />
+      <Card className="p-3.5 bg-slate-900/70 border-slate-800 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="flex items-center gap-1.5 text-xs text-slate-400 mr-1 hidden sm:flex">
+              <Filter className="w-3.5 h-3.5 text-slate-400" />
               <span>Category:</span>
             </div>
-            <div className="w-44">
-              <Select
-                value={selectedType}
-                onChange={(e) => setSelectedType(e.target.value)}
-                options={[
-                  { value: 'all', label: 'All Categories' },
-                  { value: 'flakiness', label: 'Flakiness Predictor' },
-                  { value: 'redundancy', label: 'Redundancy Pruning' },
-                  { value: 'gap', label: 'Coverage Gap Optimizer' },
-                ]}
-              />
-            </div>
+            <Select
+              value={selectedType}
+              onChange={(e) => setSelectedType(e.target.value)}
+              className="w-48 text-xs"
+              options={[
+                { value: 'all', label: 'All Categories' },
+                { value: 'flakiness', label: 'Flakiness Predictor' },
+                { value: 'redundancy', label: 'Redundancy Pruning' },
+                { value: 'gap', label: 'Coverage Gap Optimizer' },
+              ]}
+            />
 
-            <div className="flex items-center gap-2 text-xs text-slate-400 ml-2">
+            <div className="flex items-center gap-1.5 text-xs text-slate-400 ml-1 hidden sm:flex">
               <span>Severity:</span>
             </div>
-            <div className="w-36">
-              <Select
-                value={selectedSeverity}
-                onChange={(e) => setSelectedSeverity(e.target.value)}
-                options={[
-                  { value: 'all', label: 'All Severities' },
-                  { value: 'high', label: 'High Priority' },
-                  { value: 'medium', label: 'Medium Priority' },
-                  { value: 'low', label: 'Low Priority' },
-                ]}
-              />
-            </div>
+            <Select
+              value={selectedSeverity}
+              onChange={(e) => setSelectedSeverity(e.target.value)}
+              className="w-36 text-xs"
+              options={[
+                { value: 'all', label: 'All Severities' },
+                { value: 'high', label: 'High Priority' },
+                { value: 'medium', label: 'Medium Priority' },
+                { value: 'low', label: 'Low Priority' },
+              ]}
+            />
+
+            {(selectedType !== 'all' || selectedSeverity !== 'all') && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSelectedType('all');
+                  setSelectedSeverity('all');
+                }}
+                className="text-xs text-slate-400 hover:text-white px-2 py-1 h-auto"
+              >
+                Reset
+              </Button>
+            )}
           </div>
 
           <div className="text-xs text-slate-400 flex items-center gap-3">
@@ -305,7 +329,7 @@ export function AiInsightsPage() {
             )}
           </Card>
         ) : (
-          filteredInsights.map((item) => (
+          paginatedInsights.map((item) => (
             <Card
               key={item.id}
               className={`p-5 bg-slate-900/50 border transition-all ${
@@ -405,6 +429,22 @@ export function AiInsightsPage() {
               </div>
             </Card>
           ))
+        )}
+
+        {totalItems > 0 && (
+          <div className="pt-2">
+            <Pagination
+              currentPage={currentPage}
+              totalItems={totalItems}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(newSize) => {
+                setPageSize(newSize);
+                setCurrentPage(1);
+              }}
+              pageSizeOptions={[3, 6, 12]}
+            />
+          </div>
         )}
       </div>
 

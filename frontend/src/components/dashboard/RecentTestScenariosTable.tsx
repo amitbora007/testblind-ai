@@ -188,6 +188,8 @@ export function RecentTestScenariosTable({ scenarios, onNavigateToScenarios }: R
       ? RECENT_SCENARIOS
       : RECENT_SCENARIOS;
 
+  const displayedScenarios = scenarioList.slice(0, 5);
+
   return (
     <>
       <Card>
@@ -198,7 +200,7 @@ export function RecentTestScenariosTable({ scenarios, onNavigateToScenarios }: R
           </CardTitle>
           <div className="flex items-center gap-3">
             <span className="text-xs text-slate-400">
-              {scenarioList.length > 0 ? `Showing ${Math.min(scenarioList.length, 5)} most recent runs` : 'No runs recorded'}
+              {scenarioList.length > 0 ? `Showing ${displayedScenarios.length} most recent runs` : 'No runs recorded'}
             </span>
             {onNavigateToScenarios && (
               <button
@@ -213,7 +215,7 @@ export function RecentTestScenariosTable({ scenarios, onNavigateToScenarios }: R
         </CardHeader>
 
         <CardContent className="p-0">
-          {scenarioList.length === 0 ? (
+          {displayedScenarios.length === 0 ? (
             <div className="p-8 text-center border-t border-slate-800">
               <div className="p-3 bg-slate-900 w-12 h-12 rounded-full border border-slate-800 text-slate-400 mx-auto mb-3 flex items-center justify-center">
                 <CheckCircle2 className="w-6 h-6 text-blue-400" />
@@ -238,7 +240,7 @@ export function RecentTestScenariosTable({ scenarios, onNavigateToScenarios }: R
               </TableHeader>
 
               <TableBody>
-                {scenarioList.map((scenario) => (
+                {displayedScenarios.map((scenario) => (
                 <TableRow
                   key={scenario.id}
                   onClick={() => setSelectedScenario(scenario)}

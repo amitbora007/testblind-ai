@@ -339,31 +339,29 @@ export function ReportsPage() {
       </div>
 
       {/* Filter Bar */}
-      <Card className="p-4 bg-slate-900/60 border-slate-800">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2 text-xs text-slate-400">
-              <Filter className="w-3.5 h-3.5" />
+      <Card className="p-3.5 bg-slate-900/70 border-slate-800 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="flex items-center gap-1.5 text-xs text-slate-400 mr-1 hidden sm:flex">
+              <Filter className="w-3.5 h-3.5 text-slate-400" />
               <span>Filters:</span>
             </div>
-            <div className="w-48">
-              <Select
-                value={selectedProject}
-                onChange={(e) => setSelectedProject(e.target.value)}
-                options={projectOptions}
-              />
-            </div>
-            <div className="w-36">
-              <Select
-                value={selectedRange}
-                onChange={(e) => setSelectedRange(e.target.value)}
-                options={[
-                  { value: '7d', label: 'Last 7 Days' },
-                  { value: '30d', label: 'Last 30 Days' },
-                  { value: '90d', label: 'Last 90 Days' },
-                ]}
-              />
-            </div>
+            <Select
+              value={selectedProject}
+              onChange={(e) => setSelectedProject(e.target.value)}
+              options={projectOptions}
+              className="w-48 text-xs"
+            />
+            <Select
+              value={selectedRange}
+              onChange={(e) => setSelectedRange(e.target.value)}
+              className="w-36 text-xs"
+              options={[
+                { value: '7d', label: 'Last 7 Days' },
+                { value: '30d', label: 'Last 30 Days' },
+                { value: '90d', label: 'Last 90 Days' },
+              ]}
+            />
           </div>
 
           <div className="text-xs text-slate-500 flex items-center gap-1.5">

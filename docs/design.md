@@ -209,7 +209,9 @@ The BlindShield design system has been fully implemented in `frontend/src/`:
 ### 7.1 Reusable Component Catalog
 - **Primitives (`src/components/ui/`):**
   - `Button`: Primary, secondary, outline, ghost, danger, AI variants with loading spinners.
-  - `Input` & `Select`: Dark styled inputs with accessible labels, icons, error states, and focus rings.
+  - `Input`: Dark styled inputs with container width extraction (`w-*`, `max-w-*`), accessible labels, icons, error states, and focus rings.
+  - `Select`: Accessible dark select dropdowns with container width awareness, internal chevron arrow docking (10px padding inside select border), and native flex toolbar compatibility.
+  - `Pagination`: Reusable responsive pagination component supporting desktop numeric pills with ellipsis (`1 ... 4 5 6 ... 10`), compact mobile status (`Page X of Y`), item count indicators, and dynamic items-per-page selection.
   - `Card`: `Card`, `CardHeader`, `CardTitle`, `CardDescription`, `CardContent`, `CardFooter`.
   - `Badge` & `StatusPill`: High-contrast badges and semantic status pills (Passed, Failed, Skipped, Blocked, AI Suggested, Verified).
   - `Table`: Responsive table with sticky headers, hover highlights, and inspect actions.
@@ -220,8 +222,10 @@ The BlindShield design system has been fully implemented in `frontend/src/`:
 - **Application Shell (`src/components/layout/`):**
   - `BrandLogo`: TraceAI Studio by TestBlind AI logo with cyan-to-purple gradient mark.
   - `Sidebar`: 11 navigation routes, collapsible desktop mode (240px <-> 68px), and mobile slide-over drawer.
-  - `Header`: Breadcrumbs, environment switcher, search palette trigger, date picker ("Last 30 Days"), notifications, profile badge.
-  - `AppLayout`: Responsive layout manager.
+  - `Header`: Breadcrumbs, environment switcher, search palette trigger, date picker ("Last 30 Days"), interactive notification bell popover with unread badge and route actions, profile badge.
+  - `AppLayout`: Responsive layout manager with global ⌘K command palette catalog search.
+- **Filter Toolbars:**
+  - Standardized inline horizontal toolbar pattern across Test Cases, Execution Runs, AI Insights, Gap Discovery, and Reports with "Filters:" indicator, docked dropdowns, and dynamic "Reset" actions.
 - **TraceAI Studio Dashboard Screen (`src/pages/DashboardPage.tsx`):**
   - 4 top metric cards: Test Cases Overview, Requirement Coverage, Test Scenarios Executed, AI-Driven Insights.
   - Middle charts: 12-week stacked bar chart + requirement coverage donut chart.

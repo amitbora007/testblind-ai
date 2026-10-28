@@ -288,8 +288,10 @@ The **Incident Analysis** module (`/#incidents`) turns production downtime into 
 
 ### 8.1 Test Cases Catalog (`/#test-cases`)
 The unified repository for all verified tests across all projects.
-- **Filtering & Search**: Search by test name, tags (`incident-repro`, `ast-mutation`, `edge-case`), priority, or status.
-- **Assertion Metrics**: Shows verified assertion count per test.
+- **Filtering & Search**: Real-time search across test name, file path, and code body with instant "Reset" button.
+- **Multi-Dimension Filters**: Filter by Verification Status (Verified, AI Draft, Failed), Review State (Approved, Pending, Rejected), and Test Type (Mutation Killer, Incident Regression, Boundary Check).
+- **Responsive Pagination**: Interactive page navigation with customizable page sizes (10, 25, 50 rows per page), ellipsis navigation, and mobile compact status.
+- **Assertion Metrics**: Shows verified assertion count and sandbox execution duration per test.
 - **Normalized Code Hash Deduplication**: Every test's AST is normalized (stripping comments and formatting) and SHA-256 hashed to prevent duplicate test generation.
 
 ### 8.2 Review & Approval Workflows
@@ -299,14 +301,16 @@ To maintain quality standards, tests can require peer approval before CI promoti
 3. Click **"Approve Test"** or **"Reject"**.
 4. The reviewer's identity and timestamp are recorded in the audit trail.
 
-### 8.3 Test Scenarios Canvas (`/#test-scenarios`)
+### 8.3 Test Scenarios Matrix (`/#test-scenarios`)
 Create and manage multi-step user journey test scenarios (e.g. `User Registration -> OAuth Authorization -> Payment Checkout -> Refund`).
 - View step dependencies and execution ordering.
+- Paginated card grid (6, 12, 24 per page) with real-time requirement code search.
 - Trigger sequential scenario runs with one click.
 
 ### 8.4 Execution Runs & Live Terminal Logs (`/#execution-runs`)
 Monitor past and current test suite runs:
 - Status indicators: `PASSED`, `FAILED`, `BLOCKED`, `RUNNING`.
+- Inline SaaS filter toolbar: Filter by run status, trigger source, and sort order with instant reset.
 - Real-time terminal output drawer streaming stdout/stderr.
 - Downloadable execution trace artifacts.
 
@@ -318,20 +322,23 @@ Monitor past and current test suite runs:
 The command center for engineering leadership:
 - **Test Cases Overview**: Total verified assertions and automation rate.
 - **Requirement Coverage Donut**: Breakdown of fully covered, partially covered, and untested requirements.
-- **Test Scenarios Executed**: Execution velocity and trendlines.
-- **AI-Driven Insights KPI**: Actionable quality improvements.
-- **30-Day Execution Status**: Multi-week stacked bar chart tracking test passes, failures, and flakes.
+- **Recent Test Scenarios Table**: Displays the top 5 most recent verified regression runs with status pill, execution time, and one-click modal inspector.
+- **Interactive Notification Bell**: Top navigation bell badge displaying real-time mutation scans, auto-generated test suite synthesis, and repo sync alerts with direct links.
+- **Global Command Palette (`⌘K`)**: Fast keyboard-driven navigation across all screens, repositories, and mutation tools.
 
 ### 9.2 Quality & Mutation Reports (`/#reports`)
 Detailed reports on codebase resilience:
 - **Mutation Score %**: Percentage of injected mutations killed by test suites.
 - **Blindspot Breakdown**: Critical modules with low assertion density.
+- **Test Suite Audit Table**: Paginated breakdown of test suite files, statuses, and assertions.
 - **Exporting Reports**: Export quality audit data as PDF or CSV for executive reviews.
 
 ### 9.3 AI Insights (`/#ai-insights`)
 Proactive suggestions generated from historical test performance:
-- **Flaky Test Predictions**: Identifies non-deterministic assertions susceptible to timing errors.
+- **Flaky Test Predictions**: Identifies non-deterministic assertions susceptible to timing errors or unseeded random generators.
+- **Redundancy Pruning**: Flags duplicate tests that kill 0 unique mutants.
 - **Coverage Blindspots**: Flags functions with high cyclomatic complexity and zero mutation tests.
+- **Paginated Recommendations**: Responsive card pagination (3, 6, 12 per page) with category and severity filter toolbar.
 
 ---
 

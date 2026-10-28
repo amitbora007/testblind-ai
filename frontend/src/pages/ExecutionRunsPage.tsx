@@ -30,6 +30,7 @@ import {
   AlertCircle,
   ExternalLink,
   ChevronLeft,
+  Filter,
 } from 'lucide-react';
 
 export function ExecutionRunsPage() {
@@ -217,8 +218,13 @@ export function ExecutionRunsPage() {
       </div>
 
       {/* Filter and Sorting Toolbar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 bg-slate-900/60 rounded-xl border border-slate-800">
-        <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 p-3 bg-slate-900/70 rounded-xl border border-slate-800 shadow-sm">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex items-center gap-1.5 text-xs text-slate-400 mr-1 hidden sm:flex">
+            <Filter className="w-3.5 h-3.5 text-slate-400" />
+            <span>Filters:</span>
+          </div>
+
           <Select
             value={statusFilter}
             onChange={(e) => {
@@ -248,6 +254,8 @@ export function ExecutionRunsPage() {
             <option value="scheduled">Scheduled</option>
           </Select>
 
+          <div className="h-4 w-px bg-slate-800 hidden sm:block mx-1" />
+
           <Select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value)}
@@ -266,11 +274,31 @@ export function ExecutionRunsPage() {
             <option value="desc">Descending</option>
             <option value="asc">Ascending</option>
           </Select>
+
+          {(statusFilter !== 'all' || triggerFilter !== 'all' || sortBy !== 'created_at' || sortOrder !== 'desc') && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setStatusFilter('all');
+                setTriggerFilter('all');
+                setSortBy('created_at');
+                setSortOrder('desc');
+                setPage(1);
+              }}
+              className="text-xs text-slate-400 hover:text-white px-2 py-1 h-auto"
+            >
+              Reset
+            </Button>
+          )}
         </div>
 
-        <span className="text-xs text-slate-400">
-          Page {page} of {totalPages} ({totalCount} total)
-        </span>
+        <div className="flex items-center gap-2 self-end md:self-auto text-xs text-slate-400">
+          <Badge variant="outline" size="sm" className="font-mono">
+            {totalCount} total runs
+          </Badge>
+          <span>Page {page} of {totalPages || 1}</span>
+        </div>
       </div>
 
       {/* Runs Table */}
