@@ -61,7 +61,31 @@ export interface ZipUploadResult {
   test_files: number;
   config_files: string[];
   file_manifest: string[];
+  auto_generated_tests?: boolean;
+  generated_test_cases_count?: number;
+  generated_scenarios_count?: number;
   message: string;
+}
+
+export interface AutoGenerateTestsResult {
+  project_id: string;
+  test_cases_created: number;
+  scenarios_created: number;
+  message: string;
+  test_cases: TestCaseResult[];
+  scenarios: TestScenarioResult[];
+}
+
+export interface TestScenarioResult {
+  id: string;
+  project_id: string;
+  name: string;
+  requirement_code: string;
+  description?: string | null;
+  steps: any[];
+  status: string;
+  timeout_seconds: number;
+  created_at: string;
 }
 
 export interface CodeLabAnalyzeResult {
@@ -455,7 +479,7 @@ export const api = {
   },
 
   // Repository ZIP Upload
-  async uploadRepositoryZip(projectId: string, file: File): Promise<ZipUploadResult> {
+  async uploadRepositoryZip(projectId: string, file: File, autoGenerateIfNoTests = true): Promise<ZipUploadResult> {
     const formData = new FormData();
     formData.append('file', file);
 
@@ -469,7 +493,7 @@ export const api = {
       headers['X-Organization-ID'] = org;
     }
 
-    const res = await fetch(`${API_BASE}/projects/${projectId}/repositories/upload-zip`, {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/repositories/upload-zip?auto_generate_if_no_tests=${autoGenerateIfNoTests}`, {
       method: 'POST',
       headers,
       body: formData,
@@ -850,6 +874,52 @@ export const api = {
     const res = await fetch(`${API_BASE}/test-cases/${testCaseId}/export`, { headers: getHeaders() });
     if (!res.ok) throw new Error('Export failed');
     return await res.text();
+  },
+
+  async autoGenerateProjectTests(
+    projectId: string,
+    options: { create_test_cases?: boolean; create_scenarios?: boolean; force?: boolean } = {}
+  ): Promise<AutoGenerateTestsResult> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/auto-generate-tests`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({
+        create_test_cases: options.create_test_cases ?? true,
+        create_scenarios: options.create_scenarios ?? true,
+        force: options.force ?? false,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to auto-generate tests' }));
+      throw new Error(err.detail || 'Failed to auto-generate tests');
+    }
+    return await res.json();
+  },
+
+  async getProjectTestScenarios(projectId: string): Promise<TestScenarioResult[]> {
+    try {
+      const res = await fetch(`${API_BASE}/projects/${projectId}/test-scenarios`, { headers: getHeaders() });
+      if (!res.ok) return [];
+      return await res.json();
+    } catch {
+      return [];
+    }
+  },
+
+  async createProjectTestScenario(
+    projectId: string,
+    data: { name: string; requirement_code: string; description?: string; steps?: any[]; timeout_seconds?: number }
+  ): Promise<TestScenarioResult> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/test-scenarios`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to create scenario' }));
+      throw new Error(err.detail || 'Failed to create scenario');
+    }
+    return await res.json();
   },
 
   async getProjectExecutionRuns(projectId: string, params?: Record<string, any>): Promise<any> {

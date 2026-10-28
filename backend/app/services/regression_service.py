@@ -10,8 +10,10 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from app.models.incident import Incident
+from app.models.project import Project
 from app.models.run import ExecutionRun
 from app.models.scan import Mutation, ScanJob
 from app.models.test import TestCase
@@ -163,7 +165,7 @@ class RegressionService:
         mutation_score = (
             round((killed_mutants / effective_total) * 100, 2)
             if effective_total > 0
-            else (78.4 if total_mutants == 0 else 0.0)
+            else 0.0
         )
 
         # Per operator breakdown
@@ -197,7 +199,11 @@ class RegressionService:
         ][:20]
 
         # 2. Test Cases & Test Generation
-        tc_query = select(TestCase).where(TestCase.organization_id == organization_id)
+        tc_query = (
+            select(TestCase)
+            .options(joinedload(TestCase.project))
+            .where(TestCase.organization_id == organization_id)
+        )
         if project_id:
             tc_query = tc_query.where(TestCase.project_id == project_id)
         test_cases = (await db.execute(tc_query)).scalars().all()
@@ -211,6 +217,53 @@ class RegressionService:
         incident_regressions = sum(1 for t in test_cases if getattr(t, "test_type", "") == "incident_regression")
         resolved_gaps = sum(1 for t in test_cases if getattr(t, "gap_resolved", True))
 
+        # Group test cases into test suites by file_path
+        suites_dict: Dict[str, Dict[str, Any]] = {}
+        for tc in test_cases:
+            fp = tc.file_path or "tests/test_auto_generated.py"
+            proj_name = (
+                getattr(tc.project, "name", None)
+                if getattr(tc, "project", None)
+                else (tc.repository_name or "default-project")
+            )
+            if fp not in suites_dict:
+                suite_id = f"SUITE-{len(suites_dict) + 1:02d}"
+                suites_dict[fp] = {
+                    "id": suite_id,
+                    "name": fp,
+                    "project": proj_name,
+                    "project_id": str(tc.project_id),
+                    "testCount": 0,
+                    "mutationKillRate": 0.0,
+                    "lineCoverage": 0.0,
+                    "branchCoverage": 0.0,
+                    "flakinessScore": 0.0,
+                    "status": "optimal" if tc.status == "verified" else "warning",
+                    "lastRun": tc.last_run_at.isoformat() if tc.last_run_at else "Cataloged (Ready)",
+                    "mutantBreakdown": {
+                        "ror": {"total": 0, "killed": 0},
+                        "aor": {"total": 0, "killed": 0},
+                        "lcr": {"total": 0, "killed": 0},
+                        "bsr": {"total": 0, "killed": 0},
+                    },
+                }
+            suite = suites_dict[fp]
+            suite["testCount"] += 1
+            if tc.mutation_kill_count > 0:
+                suite["mutantBreakdown"]["ror"]["killed"] += tc.mutation_kill_count
+                suite["mutantBreakdown"]["ror"]["total"] += tc.mutation_kill_count
+            if tc.is_flaky:
+                suite["flakinessScore"] = 5.0
+                suite["status"] = "warning"
+
+        for s in suites_dict.values():
+            tot_k = sum(m["killed"] for m in s["mutantBreakdown"].values())
+            tot_m = sum(m["total"] for m in s["mutantBreakdown"].values())
+            if tot_m > 0:
+                s["mutationKillRate"] = round((tot_k / tot_m) * 100, 1)
+
+        test_suites_list = list(suites_dict.values())
+
         # 3. Execution History Runs
         run_query = select(ExecutionRun).where(ExecutionRun.organization_id == organization_id)
         if project_id:
@@ -220,7 +273,7 @@ class RegressionService:
         total_runs = len(runs)
         passed_runs = sum(1 for r in runs if r.status in ("passed", "success"))
         failed_runs = sum(1 for r in runs if r.status in ("failed", "error"))
-        avg_duration_ms = int(sum(r.duration_ms for r in runs) / total_runs) if total_runs > 0 else 1250
+        avg_duration_ms = int(sum(r.duration_ms for r in runs) / total_runs) if total_runs > 0 else 0
 
         # 4. Recurring Incidents
         inc_query = select(Incident).where(Incident.organization_id == organization_id)
@@ -262,6 +315,7 @@ class RegressionService:
                 "incident_regressions": incident_regressions,
                 "resolved_gaps": resolved_gaps,
             },
+            "test_suites": test_suites_list,
             "execution_history": {
                 "total_runs": total_runs,
                 "passed_runs": passed_runs,
@@ -308,6 +362,18 @@ class RegressionService:
         writer.writerow(["Mutation Killers", tg.get("mutation_killers")])
         writer.writerow(["Incident Regressions", tg.get("incident_regressions")])
         writer.writerow(["Resolved Gaps", tg.get("resolved_gaps")])
+        # Test Suites Section
+        writer.writerow(["--- TEST SUITES AUDIT BREAKDOWN ---"])
+        writer.writerow(["Suite Name", "Project", "Tests", "Mutation Kill Rate %", "Status", "Last Run"])
+        for s in report.get("test_suites", []):
+            writer.writerow([
+                s.get("name"),
+                s.get("project"),
+                s.get("testCount"),
+                f"{s.get('mutationKillRate', 0.0)}%",
+                s.get("status"),
+                s.get("lastRun"),
+            ])
         writer.writerow([])
 
         # Execution History Section

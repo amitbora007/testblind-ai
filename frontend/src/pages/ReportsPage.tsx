@@ -156,17 +156,52 @@ export function ReportsPage() {
     loadReport();
   }, []);
 
-  const availableSuites = isDemo ? MOCK_SUITES : [];
+  const liveSuites: SuiteReport[] = (unifiedData?.test_suites || []).map((s: any) => ({
+    id: s.id,
+    name: s.name,
+    project: s.project,
+    testCount: s.testCount,
+    mutationKillRate: s.mutationKillRate ?? 0,
+    lineCoverage: s.lineCoverage ?? 0,
+    branchCoverage: s.branchCoverage ?? 0,
+    flakinessScore: s.flakinessScore ?? 0,
+    status: s.status || 'optimal',
+    lastRun: s.lastRun || 'Cataloged',
+    mutantBreakdown: s.mutantBreakdown || {
+      ror: { total: 0, killed: 0 },
+      aor: { total: 0, killed: 0 },
+      lcr: { total: 0, killed: 0 },
+      bsr: { total: 0, killed: 0 },
+    },
+  }));
+
+  const availableSuites = isDemo ? MOCK_SUITES : liveSuites;
   const filteredSuites = availableSuites.filter(
     (s) => selectedProject === 'all' || s.project === selectedProject
   );
 
-  const overallMutationScore = unifiedData?.mutation_effectiveness?.overall_score ?? (isDemo ? 78.4 : 0.0);
-  const totalMutants = unifiedData?.mutation_effectiveness?.total_mutants ?? (isDemo ? 418 : 0);
-  const killedMutants = unifiedData?.mutation_effectiveness?.killed_mutants ?? (isDemo ? 328 : 0);
-  const semanticCoverage = isDemo ? '84.2%' : (overallMutationScore > 0 ? `${overallMutationScore.toFixed(1)}%` : '0.0%');
+  const totalMutants = isDemo ? 418 : (unifiedData?.mutation_effectiveness?.total_mutants ?? 0);
+  const killedMutants = isDemo ? 328 : (unifiedData?.mutation_effectiveness?.killed_mutants ?? 0);
+  const overallMutationScore = isDemo
+    ? 78.4
+    : totalMutants > 0
+    ? (unifiedData?.mutation_effectiveness?.overall_score ?? 0.0)
+    : 0.0;
+  const semanticCoverage = isDemo
+    ? '84.2%'
+    : totalMutants > 0 && overallMutationScore > 0
+    ? `${overallMutationScore.toFixed(1)}%`
+    : '0.0%';
   const flakinessIndex = isDemo ? '2.8%' : '0.0%';
   const mttk = isDemo ? '1.8s' : '0.0s';
+
+  const liveOps = unifiedData?.mutation_effectiveness?.operators;
+  const opStats = {
+    ror: isDemo ? { total: 100, killed: 82, rate: 82.0 } : liveOps?.ROR ?? { total: 0, killed: 0, rate: 0.0 },
+    aor: isDemo ? { total: 90, killed: 68, rate: 76.0 } : liveOps?.AOR ?? { total: 0, killed: 0, rate: 0.0 },
+    lcr: isDemo ? { total: 66, killed: 45, rate: 68.0 } : liveOps?.LCR ?? { total: 0, killed: 0, rate: 0.0 },
+    bsr: isDemo ? { total: 40, killed: 34, rate: 85.0 } : liveOps?.BSR ?? { total: 0, killed: 0, rate: 0.0 },
+  };
 
   const projectOptions = isDemo
     ? [
@@ -448,44 +483,44 @@ export function ReportsPage() {
                 <div>
                   <div className="flex justify-between text-xs mb-1.5">
                     <span className="text-slate-300 font-medium">ROR (Relational Operators: &lt;, &gt;, ==, !=)</span>
-                    <span className="text-slate-400">82% Killed (82/100)</span>
+                    <span className="text-slate-400">{opStats.ror.rate}% Killed ({opStats.ror.killed}/{opStats.ror.total})</span>
                   </div>
                   <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden flex">
-                    <div className="bg-emerald-500 h-full" style={{ width: '82%' }} />
-                    <div className="bg-rose-500/80 h-full" style={{ width: '18%' }} />
+                    <div className="bg-emerald-500 h-full" style={{ width: `${opStats.ror.rate}%` }} />
+                    <div className="bg-rose-500/80 h-full" style={{ width: `${Math.max(0, 100 - opStats.ror.rate)}%` }} />
                   </div>
                 </div>
 
                 <div>
                   <div className="flex justify-between text-xs mb-1.5">
                     <span className="text-slate-300 font-medium">AOR (Arithmetic Operators: +, -, *, /)</span>
-                    <span className="text-slate-400">76% Killed (68/90)</span>
+                    <span className="text-slate-400">{opStats.aor.rate}% Killed ({opStats.aor.killed}/{opStats.aor.total})</span>
                   </div>
                   <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden flex">
-                    <div className="bg-emerald-500 h-full" style={{ width: '76%' }} />
-                    <div className="bg-rose-500/80 h-full" style={{ width: '24%' }} />
+                    <div className="bg-emerald-500 h-full" style={{ width: `${opStats.aor.rate}%` }} />
+                    <div className="bg-rose-500/80 h-full" style={{ width: `${Math.max(0, 100 - opStats.aor.rate)}%` }} />
                   </div>
                 </div>
 
                 <div>
                   <div className="flex justify-between text-xs mb-1.5">
                     <span className="text-slate-300 font-medium">LCR (Logical Connectors: &amp;&amp;, ||, !)</span>
-                    <span className="text-slate-400">68% Killed (45/66)</span>
+                    <span className="text-slate-400">{opStats.lcr.rate}% Killed ({opStats.lcr.killed}/{opStats.lcr.total})</span>
                   </div>
                   <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden flex">
-                    <div className="bg-emerald-500 h-full" style={{ width: '68%' }} />
-                    <div className="bg-rose-500/80 h-full" style={{ width: '32%' }} />
+                    <div className="bg-emerald-500 h-full" style={{ width: `${opStats.lcr.rate}%` }} />
+                    <div className="bg-rose-500/80 h-full" style={{ width: `${Math.max(0, 100 - opStats.lcr.rate)}%` }} />
                   </div>
                 </div>
 
                 <div>
                   <div className="flex justify-between text-xs mb-1.5">
                     <span className="text-slate-300 font-medium">BSR (Bound &amp; Shift Registers: &gt;&gt;, &lt;&lt;)</span>
-                    <span className="text-slate-400">85% Killed (34/40)</span>
+                    <span className="text-slate-400">{opStats.bsr.rate}% Killed ({opStats.bsr.killed}/{opStats.bsr.total})</span>
                   </div>
                   <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden flex">
-                    <div className="bg-emerald-500 h-full" style={{ width: '85%' }} />
-                    <div className="bg-rose-500/80 h-full" style={{ width: '15%' }} />
+                    <div className="bg-emerald-500 h-full" style={{ width: `${opStats.bsr.rate}%` }} />
+                    <div className="bg-rose-500/80 h-full" style={{ width: `${Math.max(0, 100 - opStats.bsr.rate)}%` }} />
                   </div>
                 </div>
 
@@ -547,10 +582,10 @@ export function ReportsPage() {
                 <div>
                   <div className="flex justify-between text-xs mb-1.5">
                     <span className="text-slate-300">Mutation Coverage (Fault-detection efficacy)</span>
-                    <span className="font-mono text-slate-200">78.4%</span>
+                    <span className="font-mono text-slate-200">{isDemo ? '78.4%' : `${overallMutationScore.toFixed(1)}%`}</span>
                   </div>
                   <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                    <div className="bg-brand-teal h-full rounded-full" style={{ width: '78.4%' }} />
+                    <div className="bg-brand-teal h-full rounded-full" style={{ width: `${Math.min(100, Math.max(0, isDemo ? 78.4 : overallMutationScore))}%` }} />
                   </div>
                 </div>
 
@@ -578,7 +613,12 @@ export function ReportsPage() {
         <CardHeader className="border-b border-slate-800/80 pb-3 flex flex-row items-center justify-between">
           <CardTitle className="text-sm font-medium text-slate-200 flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-brand-teal" />
-            Test Suite Audit Breakdown ({filteredSuites.length} suites)
+            <span>Test Suite Audit Breakdown ({filteredSuites.length} {filteredSuites.length === 1 ? 'suite' : 'suites'})</span>
+            {unifiedData?.test_generation?.total_tests > 0 && !isDemo && (
+              <Badge variant="cyan" size="sm" className="ml-1">
+                {unifiedData.test_generation.total_tests} Tests Cataloged
+              </Badge>
+            )}
           </CardTitle>
           <span className="text-xs text-slate-400">Click row for mutant breakdown</span>
         </CardHeader>
@@ -606,7 +646,7 @@ export function ReportsPage() {
                       <p className="text-xs text-slate-500">
                         {isDemo
                           ? 'No test suites match the selected filter.'
-                          : 'Execute test suites in the isolated container runners to generate automated audit reports.'}
+                          : 'Execute test suites in the isolated container runners or generate auto-tests to populate automated audit reports.'}
                       </p>
                     </div>
                   </TableCell>
@@ -630,7 +670,7 @@ export function ReportsPage() {
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-semibold text-slate-200">
-                        {suite.mutationKillRate}%
+                        {suite.mutationKillRate > 0 ? `${suite.mutationKillRate}%` : '0.0%'}
                       </span>
                       <div className="w-16 bg-slate-800 h-1.5 rounded-full overflow-hidden">
                         <div
@@ -639,9 +679,11 @@ export function ReportsPage() {
                               ? 'bg-emerald-500'
                               : suite.mutationKillRate >= 65
                               ? 'bg-amber-500'
-                              : 'bg-rose-500'
+                              : suite.mutationKillRate > 0
+                              ? 'bg-rose-500'
+                              : 'bg-slate-700'
                           }`}
-                          style={{ width: `${suite.mutationKillRate}%` }}
+                          style={{ width: `${Math.max(0, suite.mutationKillRate)}%` }}
                         />
                       </div>
                     </div>
@@ -663,13 +705,13 @@ export function ReportsPage() {
                     </span>
                   </TableCell>
                   <TableCell>
-                    {suite.status === 'optimal' && (
+                    {suite.mutationKillRate === 0 && suite.testCount > 0 ? (
+                      <Badge variant="blue" size="sm">Cataloged</Badge>
+                    ) : suite.status === 'optimal' ? (
                       <Badge variant="green" size="sm">Optimal</Badge>
-                    )}
-                    {suite.status === 'warning' && (
+                    ) : suite.status === 'warning' ? (
                       <Badge variant="amber" size="sm">Attention</Badge>
-                    )}
-                    {suite.status === 'critical' && (
+                    ) : (
                       <Badge variant="rose" size="sm">Gaps Detected</Badge>
                     )}
                   </TableCell>
@@ -727,7 +769,7 @@ export function ReportsPage() {
               <h4 className="text-xs font-semibold text-slate-300 mb-2">Operator Kill Breakdown</h4>
               <div className="space-y-2">
                 {Object.entries(selectedSuite.mutantBreakdown).map(([op, data]) => {
-                  const rate = Math.round((data.killed / data.total) * 100);
+                  const rate = data.total > 0 ? Math.round((data.killed / data.total) * 100) : 0;
                   return (
                     <div key={op} className="p-2.5 bg-slate-950/40 border border-slate-800 rounded-lg">
                       <div className="flex justify-between text-xs mb-1">

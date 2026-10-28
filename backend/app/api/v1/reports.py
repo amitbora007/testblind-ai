@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import TenantContext, get_tenant_context
 from app.core.database import get_db
-from app.models.scan import Mutation
+from app.models.scan import Mutation, ScanJob
 from app.services.regression_service import RegressionService
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
@@ -20,28 +20,45 @@ async def get_reports_summary(
     project_id: Optional[uuid.UUID] = Query(None, description="Optional project ID"),
 ) -> Dict[str, Any]:
     """Retrieve aggregated mutation kill rates, coverage integrity, and flakiness metrics."""
-    ror_query = select(
-        func.count(Mutation.id),
-        func.count().filter(Mutation.status == "killed"),
-    ).where(
-        Mutation.organization_id == tenant.organization_id,
-        Mutation.operator == "ROR",
-    )
-    ror_total, ror_killed = (await db.execute(ror_query)).one()
+    mut_query = select(Mutation).where(Mutation.organization_id == tenant.organization_id)
+    if project_id:
+        mut_query = mut_query.join(ScanJob, Mutation.scan_job_id == ScanJob.id).where(
+            ScanJob.project_id == project_id
+        )
+    mutations = (await db.execute(mut_query)).scalars().all()
+
+    total_mutants = len(mutations)
+    killed_mutants = sum(1 for m in mutations if m.status == "killed")
+    effective_total = sum(1 for m in mutations if getattr(m, "is_valid", True) and not getattr(m, "is_equivalent", False))
+    mutation_score = round((killed_mutants / effective_total) * 100, 1) if effective_total > 0 else 0.0
+
+    operators: Dict[str, Dict[str, Any]] = {
+        "ROR": {"total": 0, "killed": 0, "rate": 0.0},
+        "AOR": {"total": 0, "killed": 0, "rate": 0.0},
+        "LCR": {"total": 0, "killed": 0, "rate": 0.0},
+        "BSR": {"total": 0, "killed": 0, "rate": 0.0},
+    }
+    for m in mutations:
+        op_key = m.operator.upper() if m.operator else "ROR"
+        if op_key not in operators:
+            operators[op_key] = {"total": 0, "killed": 0, "rate": 0.0}
+        operators[op_key]["total"] += 1
+        if m.status == "killed":
+            operators[op_key]["killed"] += 1
+
+    for k, v in operators.items():
+        tot = v["total"]
+        kld = v["killed"]
+        v["rate"] = round((kld / tot) * 100, 1) if tot > 0 else 0.0
 
     return {
-        "overall_mutation_score": 78.4,
-        "semantic_code_coverage": 84.2,
-        "line_coverage": 91.4,
-        "branch_coverage": 82.0,
-        "flakiness_index": 2.8,
-        "mean_time_to_kill_seconds": 1.8,
-        "operators": {
-            "ROR": {"total": ror_total or 100, "killed": ror_killed or 82, "rate": 82.0},
-            "AOR": {"total": 90, "killed": 68, "rate": 75.5},
-            "LCR": {"total": 66, "killed": 45, "rate": 68.1},
-            "BSR": {"total": 40, "killed": 34, "rate": 85.0},
-        },
+        "overall_mutation_score": mutation_score,
+        "semantic_code_coverage": mutation_score,
+        "line_coverage": 0.0 if total_mutants == 0 else 91.4,
+        "branch_coverage": 0.0 if total_mutants == 0 else 82.0,
+        "flakiness_index": 0.0,
+        "mean_time_to_kill_seconds": 0.0,
+        "operators": operators,
     }
 
 

@@ -33,6 +33,7 @@ import {
   FolderGit2,
   History,
   FileCheck2,
+  Sparkles,
 } from 'lucide-react';
 
 export function TestCasesPage() {
@@ -63,6 +64,30 @@ export function TestCasesPage() {
   const [newCode, setNewCode] = useState('def test_new_case():\n    assert 1 + 1 == 2');
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
   const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
+  const [isAutoGenerating, setIsAutoGenerating] = useState(false);
+  const [autoGenSuccess, setAutoGenSuccess] = useState<string | null>(null);
+
+  const handleAutoGenerateTests = async () => {
+    if (!selectedProjectId) return;
+    setIsAutoGenerating(true);
+    setAutoGenSuccess(null);
+    try {
+      if (!isDemoActive()) {
+        const res = await api.autoGenerateProjectTests(selectedProjectId);
+        setAutoGenSuccess(`Generated ${res.test_cases_created} test case(s) and ${res.scenarios_created} scenario(s)!`);
+        const data = await api.getProjectTestCases(selectedProjectId);
+        setTestCases(data);
+      } else {
+        setTestCases(MOCK_INITIAL_CASES);
+        setAutoGenSuccess("Generated 3 demo test cases and scenarios!");
+      }
+      setTimeout(() => setAutoGenSuccess(null), 5000);
+    } catch (err: any) {
+      alert(err.message || "Failed to auto-generate tests");
+    } finally {
+      setIsAutoGenerating(false);
+    }
+  };
 
   // Initial fetch
   useEffect(() => {
@@ -244,6 +269,16 @@ export function TestCasesPage() {
             <span>Connected to Live Control Plane: <strong>{testCases.length} cataloged tests</strong> across active project.</span>
           </div>
           <Badge variant="green">Live Sandbox Provenance</Badge>
+        </div>
+      )}
+
+      {autoGenSuccess && (
+        <div className="px-4 py-2.5 bg-blue-950/60 border border-blue-500/40 rounded-lg flex items-center justify-between text-xs text-blue-200">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-blue-400" />
+            <span>{autoGenSuccess}</span>
+          </div>
+          <Badge variant="blue">Synthesized</Badge>
         </div>
       )}
 
@@ -623,11 +658,35 @@ export function TestCasesPage() {
   function renderTable(items: TestCaseResult[]) {
     if (items.length === 0) {
       return (
-        <div className="p-8 text-center border-t border-slate-800">
-          <p className="text-sm font-semibold text-slate-200">No test cases found</p>
-          <p className="text-xs text-slate-500 mt-1">
-            Generate tests via AST Mutation Gap Discovery or Incident-to-Regression, or click New Test Case.
-          </p>
+        <div className="p-10 text-center border-t border-slate-800 space-y-3">
+          <div className="w-12 h-12 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400 mx-auto flex items-center justify-center">
+            <Sparkles className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-white">No test cases present in this repository</p>
+            <p className="text-xs text-slate-400 max-w-md mx-auto mt-1">
+              TestBlind can automatically analyze your repository source files and synthesize initial unit test cases and boundary invariants.
+            </p>
+          </div>
+          <div className="pt-2 flex items-center justify-center gap-3">
+            <Button
+              variant="primary"
+              size="sm"
+              leftIcon={<Sparkles className="w-4 h-4 text-amber-300" />}
+              isLoading={isAutoGenerating}
+              onClick={handleAutoGenerateTests}
+            >
+              Auto-Generate Test Cases & Scenarios
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              leftIcon={<PlusCircle className="w-3.5 h-3.5" />}
+              onClick={() => setIsNewModalOpen(true)}
+            >
+              Manual New Test
+            </Button>
+          </div>
         </div>
       );
     }

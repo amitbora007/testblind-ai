@@ -1,7 +1,7 @@
 import os
 import uuid
 from typing import Annotated, List
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +20,7 @@ from app.services.archive_service import (
     ZipBombSecurityError,
     ZipSlipSecurityError,
 )
+from app.services.auto_test_generator import AutoTestGeneratorService
 
 router = APIRouter(prefix="/projects/{project_id}/repositories", tags=["Repositories"])
 
@@ -28,6 +29,7 @@ router = APIRouter(prefix="/projects/{project_id}/repositories", tags=["Reposito
 async def upload_repository_zip(
     project_id: uuid.UUID,
     file: UploadFile = File(...),
+    auto_generate_if_no_tests: bool = Query(True, description="Automatically create test cases and scenarios if no tests are detected in repository"),
     tenant: Annotated[TenantContext, Depends(require_role(RoleEnum.ENGINEER))] = None,
     db: Annotated[AsyncSession, Depends(get_db)] = None,
 ) -> ZipUploadResponse:
@@ -138,6 +140,35 @@ async def upload_repository_zip(
     await db.commit()
     await db.refresh(repo)
 
+    # Automatically generate test cases and scenarios if no tests were present
+    auto_gen_ran = False
+    gen_cases_count = 0
+    gen_scen_count = 0
+    upload_msg = "Archive safely extracted and repository structure verified."
+
+    if test_files == 0 and auto_generate_if_no_tests:
+        try:
+            gen_res = await AutoTestGeneratorService.analyze_and_generate(
+                project_id=project.id,
+                organization_id=tenant.organization_id,
+                db=db,
+                create_test_cases=True,
+                create_scenarios=True,
+                force=False,
+            )
+            gen_cases_count = gen_res.test_cases_created
+            gen_scen_count = gen_res.scenarios_created
+            if gen_cases_count > 0 or gen_scen_count > 0:
+                auto_gen_ran = True
+                test_files += gen_cases_count
+                upload_msg = (
+                    f"Archive extracted. No tests were present, so {gen_cases_count} test cases "
+                    f"and {gen_scen_count} scenarios were automatically synthesized."
+                )
+        except Exception:
+            # Non-fatal if auto-generation encounters unexpected project shape
+            pass
+
     return ZipUploadResponse(
         repository_id=repo.id,
         project_id=project.id,
@@ -153,7 +184,10 @@ async def upload_repository_zip(
         test_files=test_files,
         config_files=config_files,
         file_manifest=manifest,
-        message="Archive safely extracted and repository structure verified.",
+        auto_generated_tests=auto_gen_ran,
+        generated_test_cases_count=gen_cases_count,
+        generated_scenarios_count=gen_scen_count,
+        message=upload_msg,
     )
 
 

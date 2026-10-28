@@ -20,6 +20,9 @@ class ZipUploadResponse(BaseModel):
     config_files: List[str]
     file_manifest: List[str]
     uploaded_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    auto_generated_tests: bool = False
+    generated_test_cases_count: int = 0
+    generated_scenarios_count: int = 0
     message: str = "Archive safely extracted and repository structure verified."
 
 

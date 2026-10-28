@@ -11,6 +11,8 @@ from app.core.database import get_db
 from app.models.project import Project, Repository
 from app.models.user import RoleEnum
 from app.schemas.project import ProjectCreate, ProjectRead, RepoConnect, RepoRead
+from app.schemas.test import AutoGenerateTestsRequest, AutoGenerateTestsResponse
+from app.services.auto_test_generator import AutoTestGeneratorService
 
 router = APIRouter(prefix="/projects", tags=["Projects"])
 
@@ -115,3 +117,34 @@ async def connect_repository(
     await db.refresh(repo)
 
     return RepoRead.model_validate(repo)
+
+
+@router.post("/{project_id}/auto-generate-tests", response_model=AutoGenerateTestsResponse, status_code=status.HTTP_201_CREATED)
+async def auto_generate_project_tests(
+    project_id: uuid.UUID,
+    data: AutoGenerateTestsRequest,
+    tenant: Annotated[TenantContext, Depends(require_role(RoleEnum.ENGINEER))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> AutoGenerateTestsResponse:
+    """
+    Automatically analyzes repository source code and creates initial unit test cases
+    and multi-step test scenarios if no tests are present for the project.
+    """
+    try:
+        response = await AutoTestGeneratorService.analyze_and_generate(
+            project_id=project_id,
+            organization_id=tenant.organization_id,
+            db=db,
+            create_test_cases=data.create_test_cases,
+            create_scenarios=data.create_scenarios,
+            force=data.force,
+        )
+        return response
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Auto test generation error: {str(e)}",
+        )
+

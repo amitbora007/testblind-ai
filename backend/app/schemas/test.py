@@ -104,3 +104,19 @@ class TestScenarioRead(BaseModel):
     status: str
     timeout_seconds: int
     created_at: datetime
+
+
+class AutoGenerateTestsRequest(BaseModel):
+    create_test_cases: bool = True
+    create_scenarios: bool = True
+    force: bool = False
+
+
+class AutoGenerateTestsResponse(BaseModel):
+    project_id: uuid.UUID
+    test_cases_created: int
+    scenarios_created: int
+    message: str
+    test_cases: List[TestCaseRead]
+    scenarios: List[TestScenarioRead]
+
