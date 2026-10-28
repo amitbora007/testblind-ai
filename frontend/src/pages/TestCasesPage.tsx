@@ -14,6 +14,7 @@ import {
   TableCell,
 } from '@/components/ui/Table';
 import { Dialog } from '@/components/ui/Dialog';
+import { Pagination } from '@/components/ui/Pagination';
 import { DemoModeBanner } from '@/components/common/DemoModeBanner';
 import { api, isDemoActive, TestCaseResult, ProjectResult } from '@/services/api';
 import {
@@ -232,16 +233,35 @@ export function TestCasesPage() {
     a.click();
   };
 
-  // Filter & Grouping logic
-  const filtered = testCases.filter((tc) => {
-    const q = searchQuery.toLowerCase();
+  // Pagination & Filtering state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter, reviewFilter, testTypeFilter, groupBy, selectedProjectId]);
+
+  const q = searchQuery.toLowerCase().trim();
+  const filtered = testCases.filter((tc: any) => {
     const matchesSearch =
-      tc.name.toLowerCase().includes(q) ||
-      tc.file_path.toLowerCase().includes(q) ||
-      tc.id.toLowerCase().includes(q) ||
-      tc.code.toLowerCase().includes(q);
-    return matchesSearch;
+      !q ||
+      (tc.name || '').toLowerCase().includes(q) ||
+      (tc.file_path || '').toLowerCase().includes(q) ||
+      (tc.id || '').toLowerCase().includes(q) ||
+      (tc.code || '').toLowerCase().includes(q) ||
+      (tc.function_name || '').toLowerCase().includes(q) ||
+      (tc.test_type || '').toLowerCase().includes(q);
+
+    const matchesStatus = statusFilter === 'all' || tc.status === statusFilter;
+    const matchesReview = reviewFilter === 'all' || tc.review_status === reviewFilter;
+    const matchesType = testTypeFilter === 'all' || tc.test_type === testTypeFilter;
+
+    return matchesSearch && matchesStatus && matchesReview && matchesType;
   });
+
+  const totalItems = filtered.length;
+  const startIndex = (currentPage - 1) * pageSize;
+  const paginatedCases = filtered.slice(startIndex, startIndex + pageSize);
 
   const groups: Record<string, TestCaseResult[]> = {};
   if (groupBy !== 'none') {
@@ -424,16 +444,33 @@ export function TestCasesPage() {
 
       {/* Test Cases Table View */}
       {groupBy === 'none' ? (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-3">
-            <CardTitle className="text-sm font-semibold text-white">
-              Catalog Test Cases ({filtered.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            {renderTable(filtered)}
-          </CardContent>
-        </Card>
+        <div className="space-y-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-3">
+              <CardTitle className="text-sm font-semibold text-white">
+                Catalog Test Cases ({filtered.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {renderTable(paginatedCases)}
+            </CardContent>
+          </Card>
+
+          {filtered.length > 0 && (
+            <Pagination
+              currentPage={currentPage}
+              totalItems={totalItems}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(newSize) => {
+                setPageSize(newSize);
+                setCurrentPage(1);
+              }}
+              pageSizeOptions={[10, 25, 50]}
+              itemLabel="test cases"
+            />
+          )}
+        </div>
       ) : (
         <div className="space-y-6">
           {Object.entries(groups).map(([groupTitle, items]) => (
@@ -657,6 +694,30 @@ export function TestCasesPage() {
 
   function renderTable(items: TestCaseResult[]) {
     if (items.length === 0) {
+      if (testCases.length > 0) {
+        return (
+          <div className="p-8 text-center border-t border-slate-800 space-y-3">
+            <Search className="w-8 h-8 text-slate-600 mx-auto" />
+            <p className="text-sm font-semibold text-white">No test cases match filter criteria</p>
+            <p className="text-xs text-slate-400">
+              No tests match &quot;{searchQuery}&quot; with current status, review, and type filters.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs"
+              onClick={() => {
+                setSearchQuery('');
+                setStatusFilter('all');
+                setReviewFilter('all');
+                setTestTypeFilter('all');
+              }}
+            >
+              Clear Filters
+            </Button>
+          </div>
+        );
+      }
       return (
         <div className="p-10 text-center border-t border-slate-800 space-y-3">
           <div className="w-12 h-12 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400 mx-auto flex items-center justify-center">

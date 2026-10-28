@@ -125,7 +125,7 @@ export function App() {
   const renderCurrentPage = () => {
     switch (currentRoute) {
       case 'dashboard':
-        return <DashboardPage />;
+        return <DashboardPage onNavigate={handleRouteChange} />;
       case 'projects':
       case 'repositories':
         return <ProjectsPage />;

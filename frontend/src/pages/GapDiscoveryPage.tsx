@@ -14,6 +14,7 @@ import {
   TableCell,
 } from '@/components/ui/Table';
 import { Dialog } from '@/components/ui/Dialog';
+import { Pagination } from '@/components/ui/Pagination';
 import { DemoModeBanner } from '@/components/common/DemoModeBanner';
 import {
   ScanSearch,
@@ -263,19 +264,35 @@ export function GapDiscoveryPage() {
     }
   };
 
-  // Filter Logic
-  const filteredMutations = mutations.filter((m) => {
-    const matchesOperator = operatorFilter === 'all' || m.operator.toUpperCase() === operatorFilter.toUpperCase();
-    const matchesStatus = statusFilter === 'all' || m.status.toLowerCase() === statusFilter.toLowerCase();
-    const searchLower = searchQuery.toLowerCase();
+  // Pagination & Filter state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, operatorFilter, statusFilter, selectedProjectId, selectedBranch]);
+
+  const searchLower = searchQuery.toLowerCase().trim();
+  const filteredMutations = mutations.filter((m: any) => {
+    const matchesOperator =
+      operatorFilter === 'all' ||
+      (m.operator || '').toUpperCase() === operatorFilter.toUpperCase();
+    const matchesStatus =
+      statusFilter === 'all' ||
+      (m.status || '').toLowerCase() === statusFilter.toLowerCase();
     const matchesSearch =
-      !searchQuery ||
-      m.id.toLowerCase().includes(searchLower) ||
-      m.file_path.toLowerCase().includes(searchLower) ||
-      m.original_code.toLowerCase().includes(searchLower) ||
-      m.mutated_code.toLowerCase().includes(searchLower);
+      !searchLower ||
+      (m.id || '').toLowerCase().includes(searchLower) ||
+      (m.file_path || '').toLowerCase().includes(searchLower) ||
+      (m.original_code || '').toLowerCase().includes(searchLower) ||
+      (m.mutated_code || '').toLowerCase().includes(searchLower) ||
+      (m.operator || '').toLowerCase().includes(searchLower);
     return matchesOperator && matchesStatus && matchesSearch;
   });
+
+  const totalItems = filteredMutations.length;
+  const startIndex = (currentPage - 1) * pageSize;
+  const paginatedMutations = filteredMutations.slice(startIndex, startIndex + pageSize);
 
   // Calculate Live KPI Metrics
   const totalCount = latestJob?.total_mutants ?? mutations.length;
@@ -555,11 +572,24 @@ export function GapDiscoveryPage() {
               {filteredMutations.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center py-8 text-slate-400 text-xs">
-                    No mutations found matching your current filter criteria.
+                    <p className="font-semibold text-slate-300">No mutations match filter criteria</p>
+                    <p className="mt-1">No mutants found matching &quot;{searchQuery}&quot;.</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-3 text-xs"
+                      onClick={() => {
+                        setSearchQuery('');
+                        setOperatorFilter('all');
+                        setStatusFilter('all');
+                      }}
+                    >
+                      Clear Search & Filters
+                    </Button>
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredMutations.map((mutant) => (
+                paginatedMutations.map((mutant) => (
                   <TableRow
                     key={mutant.id}
                     onClick={() => {
@@ -624,6 +654,21 @@ export function GapDiscoveryPage() {
           </Table>
         </CardContent>
       </Card>
+
+      {filteredMutations.length > 0 && (
+        <Pagination
+          currentPage={currentPage}
+          totalItems={totalItems}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={(newSize) => {
+            setPageSize(newSize);
+            setCurrentPage(1);
+          }}
+          pageSizeOptions={[10, 25, 50]}
+          itemLabel="mutants"
+        />
+      )}
 
       {/* Mutant Inspection & Synthesis Modal */}
       <Dialog

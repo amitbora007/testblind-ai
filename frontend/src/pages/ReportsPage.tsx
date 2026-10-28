@@ -13,6 +13,7 @@ import {
   TableCell,
 } from '@/components/ui/Table';
 import { Dialog } from '@/components/ui/Dialog';
+import { Pagination } from '@/components/ui/Pagination';
 import { DemoModeBanner } from '@/components/common/DemoModeBanner';
 import { api, isDemoActive, ProjectResult } from '@/services/api';
 import {
@@ -179,6 +180,13 @@ export function ReportsPage() {
   const filteredSuites = availableSuites.filter(
     (s) => selectedProject === 'all' || s.project === selectedProject
   );
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(5);
+
+  const totalSuites = filteredSuites.length;
+  const startIndex = (currentPage - 1) * pageSize;
+  const paginatedSuites = filteredSuites.slice(startIndex, startIndex + pageSize);
 
   const totalMutants = isDemo ? 418 : (unifiedData?.mutation_effectiveness?.total_mutants ?? 0);
   const killedMutants = isDemo ? 328 : (unifiedData?.mutation_effectiveness?.killed_mutants ?? 0);
@@ -652,7 +660,7 @@ export function ReportsPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredSuites.map((suite) => (
+                paginatedSuites.map((suite) => (
                 <TableRow
                   key={suite.id}
                   className="cursor-pointer hover:bg-slate-800/50 transition-colors"
@@ -735,6 +743,23 @@ export function ReportsPage() {
           </TableBody>
           </Table>
         </div>
+
+        {filteredSuites.length > 0 && (
+          <div className="p-3 border-t border-slate-800">
+            <Pagination
+              currentPage={currentPage}
+              totalItems={totalSuites}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(newSize) => {
+                setPageSize(newSize);
+                setCurrentPage(1);
+              }}
+              pageSizeOptions={[5, 10, 20]}
+              itemLabel="test suites"
+            />
+          </div>
+        )}
       </Card>
 
       {/* Suite Detail Modal */}

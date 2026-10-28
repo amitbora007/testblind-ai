@@ -6,6 +6,7 @@ import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { Dialog } from '@/components/ui/Dialog';
+import { Pagination } from '@/components/ui/Pagination';
 import { DemoModeBanner } from '@/components/common/DemoModeBanner';
 import { api, isDemoActive, ProjectResult, TestScenarioResult } from '@/services/api';
 import {
@@ -146,9 +147,9 @@ export function TestScenariosPage() {
         const data = await api.getProjectTestScenarios(selectedProjectId);
         if (data && data.length > 0) {
           const mapped: ScenarioItem[] = data.map((s, idx) => ({
-            id: s.requirement_code ? `${s.requirement_code}` : `SC-${1000 + idx}`,
+            id: s.id || (s.requirement_code ? `${s.requirement_code}-${idx}` : `SC-${1000 + idx}`),
             name: s.name,
-            associatedReq: s.requirement_code,
+            associatedReq: s.requirement_code || `REQ-${idx + 1}`,
             stepsCount: Array.isArray(s.steps) ? s.steps.length : 3,
             duration: `${s.timeout_seconds || 45}s`,
             status: s.status === 'passed' ? 'passed' : s.status === 'verified' ? 'verified' : 'passed',
@@ -177,12 +178,27 @@ export function TestScenariosPage() {
     fetchScenarios();
   }, [selectedProjectId]);
 
-  const filteredScenarios = scenarios.filter(
-    (s) =>
-      s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.associatedReq.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(6);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedProjectId]);
+
+  const searchLower = searchQuery.toLowerCase().trim();
+  const filteredScenarios = scenarios.filter((s) => {
+    if (!searchLower) return true;
+    return (
+      (s.name || '').toLowerCase().includes(searchLower) ||
+      (s.id || '').toLowerCase().includes(searchLower) ||
+      (s.associatedReq || '').toLowerCase().includes(searchLower) ||
+      (s.description || '').toLowerCase().includes(searchLower)
+    );
+  });
+
+  const totalItems = filteredScenarios.length;
+  const startIndex = (currentPage - 1) * pageSize;
+  const paginatedScenarios = filteredScenarios.slice(startIndex, startIndex + pageSize);
 
   const handleRunScenario = (id: string) => {
     setRunningScenarioId(id);
@@ -202,9 +218,9 @@ export function TestScenariosPage() {
         const data = await api.getProjectTestScenarios(selectedProjectId);
         if (data && data.length > 0) {
           const mapped: ScenarioItem[] = data.map((s, idx) => ({
-            id: s.requirement_code ? `${s.requirement_code}` : `SC-${1000 + idx}`,
+            id: s.id || (s.requirement_code ? `${s.requirement_code}-${idx}` : `SC-${1000 + idx}`),
             name: s.name,
-            associatedReq: s.requirement_code,
+            associatedReq: s.requirement_code || `REQ-${idx + 1}`,
             stepsCount: Array.isArray(s.steps) ? s.steps.length : 3,
             duration: `${s.timeout_seconds || 45}s`,
             status: 'verified',
@@ -400,17 +416,27 @@ export function TestScenariosPage() {
             </Button>
           </div>
         </Card>
+      ) : filteredScenarios.length === 0 ? (
+        <Card className="p-8 text-center bg-slate-900/40 border border-slate-800 text-slate-400">
+          <Search className="w-8 h-8 mx-auto mb-2 text-slate-600" />
+          <p className="text-sm font-semibold text-white">No test scenarios match &quot;{searchQuery}&quot;</p>
+          <p className="text-xs text-slate-400 mt-1">Try searching by requirement code (e.g. REQ-AUTO) or scenario name.</p>
+          <Button variant="outline" size="sm" className="mt-3 text-xs" onClick={() => setSearchQuery('')}>
+            Clear Search
+          </Button>
+        </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {filteredScenarios.map((scen) => (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {paginatedScenarios.map((scen) => (
             <Card key={scen.id} className="flex flex-col justify-between hover:border-slate-600 transition-all">
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between">
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs font-bold text-blue-400">{scen.id}</span>
+                      <span className="font-mono text-xs font-bold text-blue-400">{scen.associatedReq}</span>
                       <Badge variant="outline" size="sm">
-                        {scen.associatedReq}
+                        {scen.id.length > 12 ? scen.id.slice(0, 8) : scen.id}
                       </Badge>
                     </div>
                     <CardTitle className="text-sm text-white mt-1">{scen.name}</CardTitle>
@@ -467,6 +493,20 @@ export function TestScenariosPage() {
               </CardFooter>
             </Card>
           ))}
+          </div>
+
+          <Pagination
+            currentPage={currentPage}
+            totalItems={totalItems}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(newSize) => {
+              setPageSize(newSize);
+              setCurrentPage(1);
+            }}
+            pageSizeOptions={[6, 12, 24]}
+            itemLabel="scenarios"
+          />
         </div>
       )}
 

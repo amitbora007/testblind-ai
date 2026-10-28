@@ -22,7 +22,11 @@ import { DemoModeBanner } from '@/components/common/DemoModeBanner';
 import { api, isDemoActive, DashboardMetricsResult } from '@/services/api';
 import { PlayCircle, ShieldCheck } from 'lucide-react';
 
-export function DashboardPage() {
+export interface DashboardPageProps {
+  onNavigate?: (route: string) => void;
+}
+
+export function DashboardPage({ onNavigate }: DashboardPageProps = {}) {
   const [viewState, setViewState] = useState<DashboardViewState>('normal');
   const [metrics, setMetrics] = useState<DashboardMetricsResult | null>(null);
   const [isSampleDialogOpen, setIsSampleDialogOpen] = useState(false);
@@ -137,7 +141,7 @@ export function DashboardPage() {
           </div>
 
           {/* 3. Bottom Data Table: Recent Test Scenarios */}
-          <RecentTestScenariosTable />
+          <RecentTestScenariosTable onNavigateToScenarios={() => onNavigate?.('test-scenarios')} />
         </>
       )}
 

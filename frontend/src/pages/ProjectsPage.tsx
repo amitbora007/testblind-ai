@@ -6,6 +6,7 @@ import { Select } from "@/components/ui/Select";
 import { Badge } from "@/components/ui/Badge";
 import { Dialog } from "@/components/ui/Dialog";
 import { Tabs, TabsList, TabTrigger, TabContent } from "@/components/ui/Tabs";
+import { Pagination } from "@/components/ui/Pagination";
 import { DemoModeBanner } from "@/components/common/DemoModeBanner";
 import {
   api,
@@ -594,14 +595,30 @@ export function ProjectsPage({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const filteredProjects = projects.filter((p) => {
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(6);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedLanguage]);
+
+  const searchLower = searchQuery.toLowerCase().trim();
+  const filteredProjects = projects.filter((p: any) => {
     const matchesSearch =
-      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.description.toLowerCase().includes(searchQuery.toLowerCase());
+      !searchLower ||
+      (p.name || '').toLowerCase().includes(searchLower) ||
+      (p.description || '').toLowerCase().includes(searchLower) ||
+      (p.repository || '').toLowerCase().includes(searchLower) ||
+      (p.repoUrl || p.repo_url || '').toLowerCase().includes(searchLower);
     const matchesLang =
-      selectedLanguage === "all" || p.language.toLowerCase() === selectedLanguage.toLowerCase();
+      selectedLanguage === "all" ||
+      (p.language || '').toLowerCase() === selectedLanguage.toLowerCase();
     return matchesSearch && matchesLang;
   });
+
+  const totalItems = filteredProjects.length;
+  const startIndex = (currentPage - 1) * pageSize;
+  const paginatedProjects = filteredProjects.slice(startIndex, startIndex + pageSize);
 
   return (
     <div className="space-y-6">
@@ -715,7 +732,7 @@ export function ProjectsPage({
 
       {/* Projects Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {filteredProjects.map((project) => (
+        {paginatedProjects.map((project) => (
           <Card
             key={project.id}
             className="flex flex-col justify-between hover:border-slate-600 transition-all group"
@@ -832,6 +849,21 @@ export function ProjectsPage({
         ))}
       </div>
 
+      {filteredProjects.length > 0 && (
+        <Pagination
+          currentPage={currentPage}
+          totalItems={totalItems}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={(newSize) => {
+            setPageSize(newSize);
+            setCurrentPage(1);
+          }}
+          pageSizeOptions={[6, 12, 24]}
+          itemLabel="projects"
+        />
+      )}
+
       {projects.length === 0 ? (
         <Card className="p-12 text-center text-slate-400 space-y-4 bg-slate-900/40 border-dashed border-slate-800">
           <div className="w-12 h-12 rounded-xl bg-blue-950/60 border border-blue-500/30 text-blue-400 mx-auto flex items-center justify-center">
@@ -855,9 +887,20 @@ export function ProjectsPage({
           </div>
         </Card>
       ) : filteredProjects.length === 0 ? (
-        <Card className="p-8 text-center text-slate-400 space-y-2">
+        <Card className="p-8 text-center text-slate-400 space-y-3">
           <p className="text-sm font-semibold text-slate-200">No matching projects found</p>
-          <p className="text-xs text-slate-500">Try adjusting your search query or language filter.</p>
+          <p className="text-xs text-slate-500">No projects matched &quot;{searchQuery}&quot;.</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-xs mx-auto"
+            onClick={() => {
+              setSearchQuery('');
+              setSelectedLanguage('all');
+            }}
+          >
+            Clear Search & Filters
+          </Button>
         </Card>
       ) : null}
 
