@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/Badge';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { Dialog } from '@/components/ui/Dialog';
 import { DemoModeBanner } from '@/components/common/DemoModeBanner';
+import { isDemoActive } from '@/services/api';
 import {
   GitFork,
   PlayCircle,
@@ -103,7 +104,7 @@ const MOCK_SCENARIOS: ScenarioItem[] = [
 ];
 
 export function TestScenariosPage() {
-  const [scenarios, setScenarios] = useState<ScenarioItem[]>(MOCK_SCENARIOS);
+  const [scenarios, setScenarios] = useState<ScenarioItem[]>(() => isDemoActive() ? MOCK_SCENARIOS : []);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedScenario, setSelectedScenario] = useState<ScenarioItem | null>(null);
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
@@ -186,73 +187,97 @@ export function TestScenariosPage() {
       </div>
 
       {/* Scenarios Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {filteredScenarios.map((scen) => (
-          <Card key={scen.id} className="flex flex-col justify-between hover:border-slate-600 transition-all">
-            <CardHeader className="pb-3">
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-bold text-blue-400">{scen.id}</span>
-                    <Badge variant="outline" size="sm">
-                      {scen.associatedReq}
-                    </Badge>
+      {scenarios.length === 0 ? (
+        <Card className="p-12 text-center text-slate-400 space-y-4 bg-slate-900/40 border-dashed border-slate-800">
+          <div className="w-12 h-12 rounded-xl bg-blue-950/60 border border-blue-500/30 text-blue-400 mx-auto flex items-center justify-center">
+            <GitFork className="w-6 h-6" />
+          </div>
+          <div>
+            <h3 className="text-base font-semibold text-white">No Test Scenarios Defined</h3>
+            <p className="text-xs text-slate-400 max-w-md mx-auto mt-1">
+              Configure multi-step user journey regression scenarios to verify end-to-end workflows in isolated sandboxes.
+            </p>
+          </div>
+          <div className="pt-2">
+            <Button
+              variant="primary"
+              size="sm"
+              leftIcon={<PlusCircle className="w-3.5 h-3.5" />}
+              onClick={() => setIsNewModalOpen(true)}
+            >
+              New Scenario
+            </Button>
+          </div>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {filteredScenarios.map((scen) => (
+            <Card key={scen.id} className="flex flex-col justify-between hover:border-slate-600 transition-all">
+              <CardHeader className="pb-3">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs font-bold text-blue-400">{scen.id}</span>
+                      <Badge variant="outline" size="sm">
+                        {scen.associatedReq}
+                      </Badge>
+                    </div>
+                    <CardTitle className="text-sm text-white mt-1">{scen.name}</CardTitle>
                   </div>
-                  <CardTitle className="text-sm text-white mt-1">{scen.name}</CardTitle>
+
+                  <StatusPill status={scen.status} label={scen.statusLabel} />
                 </div>
 
-                <StatusPill status={scen.status} label={scen.statusLabel} />
-              </div>
+                <p className="text-xs text-slate-400 mt-2">{scen.description}</p>
+              </CardHeader>
 
-              <p className="text-xs text-slate-400 mt-2">{scen.description}</p>
-            </CardHeader>
-
-            <CardContent className="py-2">
-              <div className="p-3 bg-slate-950/70 rounded-lg border border-slate-800 space-y-1.5">
-                <div className="flex items-center justify-between text-xs text-slate-400">
-                  <span className="flex items-center gap-1.5">
-                    <ListOrdered className="w-3.5 h-3.5 text-blue-400" />
-                    <span>Workflow Steps ({scen.stepsCount})</span>
-                  </span>
-                  <span className="font-mono text-[11px] text-purple-300">
-                    Confidence: {scen.aiConfidence}
-                  </span>
+              <CardContent className="py-2">
+                <div className="p-3 bg-slate-950/70 rounded-lg border border-slate-800 space-y-1.5">
+                  <div className="flex items-center justify-between text-xs text-slate-400">
+                    <span className="flex items-center gap-1.5">
+                      <ListOrdered className="w-3.5 h-3.5 text-blue-400" />
+                      <span>Workflow Steps ({scen.stepsCount})</span>
+                    </span>
+                    <span className="font-mono text-[11px] text-purple-300">
+                      Confidence: {scen.aiConfidence}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-300 font-mono truncate">
+                    {scen.steps[0]}
+                  </div>
                 </div>
-                <div className="text-[11px] text-slate-300 font-mono truncate">
-                  {scen.steps[0]}
+              </CardContent>
+
+              <CardFooter className="pt-2 flex items-center justify-between text-xs text-slate-400">
+                <span className="flex items-center gap-1 font-mono">
+                  <Clock className="w-3.5 h-3.5 text-slate-500" />
+                  <span>{scen.duration}</span>
+                </span>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSelectedScenario(scen)}
+                  >
+                    Inspect Steps
+                  </Button>
+
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    isLoading={runningScenarioId === scen.id}
+                    onClick={() => handleRunScenario(scen.id)}
+                    leftIcon={<PlayCircle className="w-3.5 h-3.5" />}
+                  >
+                    Run Suite
+                  </Button>
                 </div>
-              </div>
-            </CardContent>
-
-            <CardFooter className="pt-2 flex items-center justify-between text-xs text-slate-400">
-              <span className="flex items-center gap-1 font-mono">
-                <Clock className="w-3.5 h-3.5 text-slate-500" />
-                <span>{scen.duration}</span>
-              </span>
-
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setSelectedScenario(scen)}
-                >
-                  Inspect Steps
-                </Button>
-
-                <Button
-                  variant="primary"
-                  size="sm"
-                  isLoading={runningScenarioId === scen.id}
-                  onClick={() => handleRunScenario(scen.id)}
-                  leftIcon={<PlayCircle className="w-3.5 h-3.5" />}
-                >
-                  Run Suite
-                </Button>
-              </div>
-            </CardFooter>
-          </Card>
-        ))}
-      </div>
+              </CardFooter>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {/* Scenario Detail Dialog */}
       <Dialog

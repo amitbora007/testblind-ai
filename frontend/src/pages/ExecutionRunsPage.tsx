@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/Table';
 import { Dialog } from '@/components/ui/Dialog';
 import { DemoModeBanner } from '@/components/common/DemoModeBanner';
-import { api, ExecutionRunResult, ProjectResult } from '@/services/api';
+import { api, isDemoActive, ExecutionRunResult, ProjectResult } from '@/services/api';
 import {
   PlayCircle,
   Terminal,
@@ -95,15 +95,15 @@ export function ExecutionRunsPage() {
         setTotalCount(res.length);
         setIsLiveBackend(true);
       } else {
-        setRuns(MOCK_INITIAL_RUNS);
+        setRuns(isDemoActive() ? MOCK_INITIAL_RUNS : []);
         setTotalPages(1);
-        setTotalCount(MOCK_INITIAL_RUNS.length);
-        setIsLiveBackend(false);
+        setTotalCount(isDemoActive() ? MOCK_INITIAL_RUNS.length : 0);
+        setIsLiveBackend(true);
       }
     } catch {
-      setRuns(MOCK_INITIAL_RUNS);
+      setRuns(isDemoActive() ? MOCK_INITIAL_RUNS : []);
       setTotalPages(1);
-      setTotalCount(MOCK_INITIAL_RUNS.length);
+      setTotalCount(isDemoActive() ? MOCK_INITIAL_RUNS.length : 0);
       setIsLiveBackend(false);
     } finally {
       setIsLoading(false);
@@ -276,8 +276,16 @@ export function ExecutionRunsPage() {
       {/* Runs Table */}
       <Card>
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
+          {runs.length === 0 ? (
+            <div className="p-12 text-center text-slate-400 space-y-2">
+              <p className="text-sm font-semibold text-white">No Execution Runs Found</p>
+              <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                Trigger an execution from CI, Code Lab, or run test cases in the Sandbox to view telemetry.
+              </p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
               <TableRow className="hover:bg-transparent cursor-default">
                 <TableHead>Run ID</TableHead>
                 <TableHead>Trigger & Provenance</TableHead>
@@ -347,6 +355,7 @@ export function ExecutionRunsPage() {
               ))}
             </TableBody>
           </Table>
+          )}
         </CardContent>
       </Card>
 

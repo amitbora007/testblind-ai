@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { Dialog } from '@/components/ui/Dialog';
 import { DemoModeBanner } from '@/components/common/DemoModeBanner';
+import { isDemoActive } from '@/services/api';
 import {
   Plug,
   Github,
@@ -85,8 +86,60 @@ const INITIAL_INTEGRATIONS: Integration[] = [
   },
 ];
 
+const AUTH_INTEGRATIONS: Integration[] = [
+  {
+    id: 'github',
+    name: 'GitHub Actions & Check Runs',
+    category: 'ci_cd',
+    description: 'Post PR status checks, inline comments on surviving mutants, and automated regression verification gate.',
+    status: 'disconnected',
+    configFields: [
+      { label: 'GitHub App Installation ID', key: 'appId', placeholder: 'e.g. 48921045', value: '' },
+      { label: 'Target Repositories', key: 'repos', placeholder: 'org/repo1, org/repo2', value: '' },
+      { label: 'PR Comment Behavior', key: 'behavior', placeholder: 'summary | inline_diff', value: 'summary' },
+    ],
+  },
+  {
+    id: 'gitlab',
+    name: 'GitLab CI/CD (Planned — Unimplemented)',
+    category: 'ci_cd',
+    description: 'Block merge requests when mutation score drops below target threshold or flakiness spikes. (Planned post-v1.0).',
+    status: 'disconnected',
+    configFields: [
+      { label: 'GitLab Host URL', key: 'host', placeholder: 'https://gitlab.com or internal domain', value: '' },
+      { label: 'Project Access Token', key: 'token', placeholder: 'glpat-...', value: '' },
+      { label: 'Pipeline Failure Threshold (%)', key: 'threshold', placeholder: '75', value: '75' },
+    ],
+  },
+  {
+    id: 'slack',
+    name: 'Slack Alerts',
+    category: 'chat',
+    description: 'Receive real-time notifications for surviving mutants, flaky test alerts, and container run summaries.',
+    status: 'disconnected',
+    configFields: [
+      { label: 'Incoming Webhook URL', key: 'webhook', placeholder: 'https://hooks.slack.com/services/...', value: '' },
+      { label: 'Notification Channel', key: 'channel', placeholder: '#qa-testblind-alerts', value: '' },
+      { label: 'Notify On', key: 'events', placeholder: 'all | failures_only', value: 'failures_only' },
+    ],
+  },
+  {
+    id: 'jira',
+    name: 'Jira Software',
+    category: 'issue_tracker',
+    description: 'Automatically file Jira bug tickets for unhandled incident reproductions and surviving test gaps.',
+    status: 'disconnected',
+    configFields: [
+      { label: 'Jira Cloud Domain', key: 'domain', placeholder: 'your-domain.atlassian.net', value: '' },
+      { label: 'Service Account Email', key: 'email', placeholder: 'ci-bot@company.com', value: '' },
+      { label: 'API Token', key: 'apiToken', placeholder: 'Jira API Token', value: '' },
+      { label: 'Default Project Key', key: 'projectKey', placeholder: 'QA or ENG', value: 'QA' },
+    ],
+  },
+];
+
 export function IntegrationsPage() {
-  const [integrations, setIntegrations] = useState<Integration[]>(INITIAL_INTEGRATIONS);
+  const [integrations, setIntegrations] = useState<Integration[]>(() => isDemoActive() ? INITIAL_INTEGRATIONS : AUTH_INTEGRATIONS);
   const [activeConfig, setActiveConfig] = useState<Integration | null>(null);
   const [cliToken, setCliToken] = useState<string>('<YOUR_CLI_TOKEN>');
   const [toastMessage, setToastMessage] = useState<string | null>(null);

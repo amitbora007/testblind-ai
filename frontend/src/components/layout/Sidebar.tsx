@@ -31,7 +31,6 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, category: 'core' },
   { id: 'projects', label: 'Projects', icon: FolderGit2, category: 'core' },
-  { id: 'repositories', label: 'Repos & Upload', icon: GitBranch, badge: 'ZIP', category: 'core' },
   { id: 'code-lab', label: 'Code Lab', icon: Code2, badge: 'Live', category: 'core' },
   { id: 'gap-discovery', label: 'Test Gap Discovery', icon: ScanSearch, badge: 'AI', category: 'core' },
   { id: 'incidents', label: 'Incident Analysis', icon: Flame, badge: 'New', category: 'core' },

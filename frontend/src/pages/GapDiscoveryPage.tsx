@@ -40,6 +40,7 @@ import {
 } from 'lucide-react';
 import {
   api,
+  isDemoActive,
   ProjectResult,
   ScanJobResult,
   MutationResult,
@@ -160,7 +161,7 @@ export function GapDiscoveryPage() {
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [selectedBranch, setSelectedBranch] = useState<string>('main');
   const [latestJob, setLatestJob] = useState<ScanJobResult | null>(null);
-  const [mutations, setMutations] = useState<MutationResult[]>(DEMO_MUTATIONS);
+  const [mutations, setMutations] = useState<MutationResult[]>(() => isDemoActive() ? DEMO_MUTATIONS : []);
   const [isLiveBackend, setIsLiveBackend] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isScanning, setIsScanning] = useState<boolean>(false);
@@ -196,17 +197,19 @@ export function GapDiscoveryPage() {
             const latest = jobs[0];
             setLatestJob(latest);
             const fetchedMutations = await api.getScanJobMutations(latest.id);
-            if (fetchedMutations && fetchedMutations.length > 0) {
-              setMutations(fetchedMutations);
-            }
+            setMutations(fetchedMutations || []);
+          } else {
+            setMutations(isDemoActive() ? DEMO_MUTATIONS : []);
           }
           setIsLiveBackend(true);
         } else {
           setIsLiveBackend(false);
+          setMutations(isDemoActive() ? DEMO_MUTATIONS : []);
         }
       } catch (err) {
         console.warn('Failed to connect to live backend; operating in demo fallback mode.', err);
         setIsLiveBackend(false);
+        setMutations(isDemoActive() ? DEMO_MUTATIONS : []);
       } finally {
         setIsLoading(false);
       }
@@ -230,7 +233,7 @@ export function GapDiscoveryPage() {
         setMutations(fetchedMutations || []);
       } else {
         setLatestJob(null);
-        setMutations([]);
+        setMutations(isDemoActive() ? DEMO_MUTATIONS : []);
       }
     } catch (err) {
       console.warn('Error loading project jobs', err);
@@ -248,8 +251,10 @@ export function GapDiscoveryPage() {
         setMutations(updatedMutations || []);
       } else {
         // Simulated run for demo mode
-        await new Promise((r) => setTimeout(r, 900));
-        setMutations(DEMO_MUTATIONS);
+        if (isDemoActive()) {
+          await new Promise((r) => setTimeout(r, 900));
+          setMutations(DEMO_MUTATIONS);
+        }
       }
     } catch (err) {
       console.error('Scan execution error:', err);

@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { PieChart } from 'lucide-react';
+import { isDemoActive } from '@/services/api';
 
 interface Segment {
   id: string;
@@ -16,8 +18,16 @@ const SEGMENTS: Segment[] = [
   { id: 'obsolete', label: 'Obsolete', percentage: 5, count: 16, color: '#64748B' },
 ];
 
-export function RequirementCoverageDonut() {
+export interface RequirementCoverageDonutProps {
+  slices?: Array<{ name: string; value: number; color: string }> | null;
+}
+
+export function RequirementCoverageDonut({ slices }: RequirementCoverageDonutProps = {}) {
   const [activeSegment, setActiveSegment] = useState<Segment | null>(null);
+  const isDemo = isDemoActive();
+
+  const totalSliceValue = slices?.reduce((acc, s) => acc + s.value, 0) || 0;
+  const hasData = isDemo || totalSliceValue > 0;
 
   // SVG calculations for a 200x200 donut chart
   const radius = 70;
@@ -35,6 +45,18 @@ export function RequirementCoverageDonut() {
       </CardHeader>
 
       <CardContent className="flex-1 flex flex-col items-center justify-center p-4">
+        {!hasData ? (
+          <div className="h-48 sm:h-56 flex flex-col items-center justify-center text-center p-4">
+            <div className="p-3 bg-slate-900 rounded-full border border-slate-800 text-slate-400 mb-2">
+              <PieChart className="w-6 h-6 text-cyan-400" />
+            </div>
+            <p className="text-sm font-medium text-slate-200">No Coverage Data Yet</p>
+            <p className="text-xs text-slate-400 max-w-xs mt-1">
+              Coverage mapping requires linked projects and executed AST mutation test suites.
+            </p>
+          </div>
+        ) : (
+        <>
         {/* Donut Chart Display */}
         <div className="relative w-48 h-48 sm:w-56 sm:h-56 flex items-center justify-center">
           <svg className="w-full h-full -rotate-90" viewBox="0 0 200 200">
@@ -98,6 +120,8 @@ export function RequirementCoverageDonut() {
             </div>
           ))}
         </div>
+        </>
+        )}
       </CardContent>
     </Card>
   );

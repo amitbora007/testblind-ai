@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Select } from '@/components/ui/Select';
 import { Dialog } from '@/components/ui/Dialog';
 import { DemoModeBanner } from '@/components/common/DemoModeBanner';
+import { api, isDemoActive, AiInsightItem } from '@/services/api';
 import {
   Sparkles,
   AlertTriangle,
@@ -117,12 +118,52 @@ const MOCK_INSIGHTS: InsightItem[] = [
   },
 ];
 
+const mapBackendInsight = (b: AiInsightItem): InsightItem => {
+  const typeMap: Record<string, 'flakiness' | 'redundancy' | 'gap'> = {
+    flakiness: 'flakiness',
+    redundancy: 'redundancy',
+    gap: 'gap',
+    boundary_gap: 'gap',
+    unasserted_boundary: 'gap',
+  };
+  const sevMap: Record<string, 'high' | 'medium' | 'low'> = {
+    high: 'high',
+    medium: 'medium',
+    low: 'low',
+  };
+  return {
+    id: b.id,
+    type: typeMap[b.type] || 'gap',
+    severity: sevMap[b.severity] || 'medium',
+    title: b.title,
+    targetFile: b.target_file,
+    affectedFunction: b.evidence?.affected_function || `Line ${b.line_number}`,
+    confidence: Math.round((1 - (b.uncertainty?.score ?? 0.2)) * 100),
+    description: b.description,
+    evidence: typeof b.evidence === 'string' ? b.evidence : JSON.stringify(b.evidence, null, 2),
+    suggestedAction: b.suggested_fix || 'Review test coverage and apply boundary assertions.',
+    codeSnippet: b.suggested_fix || undefined,
+    status: 'active',
+  };
+};
+
 export function AiInsightsPage() {
-  const [insights, setInsights] = useState<InsightItem[]>(MOCK_INSIGHTS);
+  const [insights, setInsights] = useState<InsightItem[]>(() => isDemoActive() ? MOCK_INSIGHTS : []);
   const [selectedType, setSelectedType] = useState<string>('all');
   const [selectedSeverity, setSelectedSeverity] = useState<string>('all');
   const [inspectItem, setInspectItem] = useState<InsightItem | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isDemoActive()) {
+      api.getAiInsights().then((items) => {
+        const realItems = (items || []).filter((i) => !i.id.startsWith('INS-'));
+        setInsights(realItems.map(mapBackendInsight));
+      }).catch(() => {
+        setInsights([]);
+      });
+    }
+  }, []);
 
   const filteredInsights = insights.filter((item) => {
     const matchesType = selectedType === 'all' || item.type === selectedType;
@@ -245,11 +286,23 @@ export function AiInsightsPage() {
       <div className="space-y-4">
         {filteredInsights.length === 0 ? (
           <Card className="p-12 text-center bg-slate-900/40 border-slate-800">
-            <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto mb-3" />
-            <h3 className="text-base font-medium text-slate-200">No Pending AI Recommendations</h3>
-            <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
-              All identified test gaps and flakiness risks for the selected filters have been addressed or resolved.
-            </p>
+            {isDemoActive() ? (
+              <>
+                <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto mb-3" />
+                <h3 className="text-base font-medium text-slate-200">No Pending AI Recommendations</h3>
+                <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
+                  All identified test gaps and flakiness risks for the selected filters have been addressed or resolved.
+                </p>
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-10 h-10 text-slate-500 mx-auto mb-3" />
+                <h3 className="text-base font-medium text-slate-200">No AI Insights Detected</h3>
+                <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
+                  Run AST mutation scanning and test executions on your projects to discover test gaps, redundant assertions, and flakiness risks.
+                </p>
+              </>
+            )}
           </Card>
         ) : (
           filteredInsights.map((item) => (

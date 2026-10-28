@@ -1,5 +1,15 @@
 import React, { useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { Activity } from 'lucide-react';
+import { isDemoActive } from '@/services/api';
+
+export interface TrendDataPoint {
+  week: string | number;
+  passed: number;
+  failed: number;
+  skipped: number;
+  blocked?: number;
+}
 
 interface WeekData {
   week: number;
@@ -25,8 +35,17 @@ const WEEKLY_DATA: WeekData[] = [
   { week: 12, passed: 44, failed: 14, skipped: 5, blocked: 5 },
 ];
 
-export function ExecutionStatusBarChart() {
+export interface ExecutionStatusBarChartProps {
+  trends?: Array<{ week: string; passed: number; failed: number; skipped: number }> | null;
+}
+
+export function ExecutionStatusBarChart({ trends }: ExecutionStatusBarChartProps = {}) {
   const [hoveredWeek, setHoveredWeek] = useState<WeekData | null>(null);
+  const isDemo = isDemoActive();
+
+  // If in authenticated mode and trends has no runs
+  const totalTrendExecutions = trends?.reduce((acc, t) => acc + t.passed + t.failed + t.skipped, 0) || 0;
+  const hasData = isDemo || totalTrendExecutions > 0;
 
   const yTicks = [100, 80, 60, 40, 20, 0];
 
@@ -59,6 +78,17 @@ export function ExecutionStatusBarChart() {
       </CardHeader>
 
       <CardContent className="flex-1 pb-4">
+        {!hasData ? (
+          <div className="h-64 sm:h-72 flex flex-col items-center justify-center text-center p-6 border border-dashed border-slate-800 rounded-lg">
+            <div className="p-3 bg-slate-900 rounded-full border border-slate-800 text-slate-400 mb-3">
+              <Activity className="w-6 h-6 text-emerald-400" />
+            </div>
+            <p className="text-sm font-medium text-slate-200">No Execution History Yet</p>
+            <p className="text-xs text-slate-400 max-w-sm mt-1">
+              Execute tests from Code Lab, connect a GitHub repository, or run Gap Discovery to view weekly execution telemetry.
+            </p>
+          </div>
+        ) : (
         <div className="relative h-64 sm:h-72 flex flex-col justify-between pt-2">
           {/* Y-Axis Gridlines & Labels */}
           <div className="absolute inset-0 flex flex-col justify-between pointer-events-none pr-2">
@@ -136,11 +166,12 @@ export function ExecutionStatusBarChart() {
                 key={item.week}
                 className="flex-1 text-center text-[10px] sm:text-[11px] text-slate-400 font-medium truncate"
               >
-                Week
+                Week {item.week}
               </span>
             ))}
           </div>
         </div>
+        )}
       </CardContent>
     </Card>
   );

@@ -37,6 +37,18 @@ export function AppLayout({
     item.label.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // Global ⌘K / Ctrl+K shortcut listener
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsSearchOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   return (
     <div className="flex min-h-screen bg-canvas-base text-slate-100 overflow-x-hidden w-full">
       {/* Sidebar Navigation */}

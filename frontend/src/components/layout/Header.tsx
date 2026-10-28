@@ -56,7 +56,7 @@ export function Header({
     : 'QA';
 
   const userRole = currentUser?.memberships?.[0]?.role?.toUpperCase() || (isDemoMode ? 'DEMO' : 'OWNER');
-  const orgName = currentUser?.memberships?.[0]?.organization_name || (isDemoMode ? 'Demo Workspace' : 'Acme Corp');
+  const orgName = currentUser?.memberships?.[0]?.organization_name || localStorage.getItem('tb_active_org_name') || (isDemoMode ? 'Demo Workspace' : 'Organization');
 
   return (
     <header className="h-16 shrink-0 bg-canvas-base/80 backdrop-blur-md border-b border-slate-800/80 px-3 sm:px-4 lg:px-6 flex items-center justify-between sticky top-0 z-20 w-full min-w-0">

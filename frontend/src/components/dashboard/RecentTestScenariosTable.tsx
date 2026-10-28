@@ -12,6 +12,7 @@ import { StatusPill, TestStatus } from '@/components/ui/StatusPill';
 import { Dialog } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
 import { ShieldCheck, Terminal, Clock, GitCommit, CheckCircle2, ChevronRight } from 'lucide-react';
+import { isDemoActive } from '@/services/api';
 
 export interface TestScenarioRecord {
   id: string;
@@ -49,20 +50,20 @@ export const RECENT_SCENARIOS: TestScenarioRecord[] = [
   },
   {
     id: 'SC-1022',
-    name: 'User Login Flow',
-    associatedReq: 'REQ-55',
+    name: 'Session Token Rotation & Replay Guard',
+    associatedReq: 'REQ-44',
     status: 'passed',
     statusLabel: 'Passed (Green Check)',
-    executionTime: '1m 20s',
-    aiConfidence: '98%',
+    executionTime: '1m 05s',
+    aiConfidence: '95%',
     commit: 'b4a89f2',
-    assertionsPassed: 14,
-    totalAssertions: 14,
+    assertionsPassed: 12,
+    totalAssertions: 12,
     logs: [
-      '[00:00.01] Running regression check: SC-1022 (User Login Flow idempotency)',
+      '[00:00.01] Running regression check: SC-1022 (Session Token Rotation & Replay Guard)',
       '[00:00.32] Verifying session cookie SameSite=Lax enforcement... OK',
       '[00:00.78] JWT claim verification: exp, iss, sub, tenant_id... OK',
-      '[00:01.20] Execution verified with cryptographic seal: sha256:7f9a2b8e',
+      '[00:01.05] Execution verified with cryptographic seal: sha256:7f9a2b8e',
     ],
   },
   {
@@ -120,8 +121,15 @@ export const RECENT_SCENARIOS: TestScenarioRecord[] = [
   },
 ];
 
-export function RecentTestScenariosTable() {
+export interface RecentTestScenariosTableProps {
+  scenarios?: TestScenarioRecord[] | null;
+}
+
+export function RecentTestScenariosTable({ scenarios }: RecentTestScenariosTableProps = {}) {
   const [selectedScenario, setSelectedScenario] = useState<TestScenarioRecord | null>(null);
+  const isDemo = isDemoActive();
+
+  const scenarioList = scenarios !== undefined && scenarios !== null ? scenarios : (isDemo ? RECENT_SCENARIOS : []);
 
   return (
     <>
@@ -131,26 +139,37 @@ export function RecentTestScenariosTable() {
             Recent Test Scenarios
           </CardTitle>
           <span className="text-xs text-slate-400">
-            Showing 5 most recent runs
+            {scenarioList.length > 0 ? `Showing ${Math.min(scenarioList.length, 5)} most recent runs` : 'No runs recorded'}
           </span>
         </CardHeader>
 
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent cursor-default">
-                <TableHead>Scenario ID</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Associated Req</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Execution Time</TableHead>
-                <TableHead>AI Confidence</TableHead>
-                <TableHead className="text-right">Action</TableHead>
-              </TableRow>
-            </TableHeader>
+          {scenarioList.length === 0 ? (
+            <div className="p-8 text-center border-t border-slate-800">
+              <div className="p-3 bg-slate-900 w-12 h-12 rounded-full border border-slate-800 text-slate-400 mx-auto mb-3 flex items-center justify-center">
+                <CheckCircle2 className="w-6 h-6 text-blue-400" />
+              </div>
+              <p className="text-sm font-semibold text-white">No Test Scenarios Recorded</p>
+              <p className="text-xs text-slate-400 max-w-sm mx-auto mt-1">
+                No regression test scenarios have been run for this organization yet. Run test generation or explore Code Lab to execute scenarios.
+              </p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent cursor-default">
+                  <TableHead>Scenario ID</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Associated Req</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Execution Time</TableHead>
+                  <TableHead>AI Confidence</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
 
-            <TableBody>
-              {RECENT_SCENARIOS.map((scenario) => (
+              <TableBody>
+                {scenarioList.map((scenario) => (
                 <TableRow
                   key={scenario.id}
                   onClick={() => setSelectedScenario(scenario)}
@@ -189,6 +208,7 @@ export function RecentTestScenariosTable() {
               ))}
             </TableBody>
           </Table>
+          )}
         </CardContent>
       </Card>
 

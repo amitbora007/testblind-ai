@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { TopMetricCards } from '@/components/dashboard/TopMetricCards';
 import { ExecutionStatusBarChart } from '@/components/dashboard/ExecutionStatusBarChart';
 import { RequirementCoverageDonut } from '@/components/dashboard/RequirementCoverageDonut';
@@ -19,12 +19,28 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { NotificationToast, ToastProps } from '@/components/ui/NotificationToast';
 import { DemoModeBanner } from '@/components/common/DemoModeBanner';
+import { api, isDemoActive, DashboardMetricsResult } from '@/services/api';
 import { PlayCircle, ShieldCheck } from 'lucide-react';
 
 export function DashboardPage() {
   const [viewState, setViewState] = useState<DashboardViewState>('normal');
+  const [metrics, setMetrics] = useState<DashboardMetricsResult | null>(null);
   const [isSampleDialogOpen, setIsSampleDialogOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastProps[]>([]);
+
+  useEffect(() => {
+    async function fetchDashboard() {
+      if (!isDemoActive()) {
+        try {
+          const data = await api.getDashboardMetrics();
+          setMetrics(data);
+        } catch (err) {
+          console.warn('Failed to fetch dashboard metrics:', err);
+        }
+      }
+    }
+    fetchDashboard();
+  }, []);
 
   const handleTriggerToast = () => {
     const id = Date.now().toString();
@@ -50,13 +66,15 @@ export function DashboardPage() {
       {/* Explicit Demo Mode Indicator */}
       <DemoModeBanner />
 
-      {/* Interactive Component State Harness */}
-      <ComponentStateTester
-        viewState={viewState}
-        onViewStateChange={setViewState}
-        onOpenSampleDialog={() => setIsSampleDialogOpen(true)}
-        onTriggerToast={handleTriggerToast}
-      />
+      {/* Interactive Component State Harness - Only in Demo Mode */}
+      {isDemoActive() && (
+        <ComponentStateTester
+          viewState={viewState}
+          onViewStateChange={setViewState}
+          onOpenSampleDialog={() => setIsSampleDialogOpen(true)}
+          onTriggerToast={handleTriggerToast}
+        />
+      )}
 
       {/* Floating Toast Notification Container */}
       {toasts.length > 0 && (
@@ -103,18 +121,18 @@ export function DashboardPage() {
       {viewState === 'normal' && (
         <>
           {/* 1. Top 4 KPI Metric Cards (TraceAI Studio benchmark) */}
-          <TopMetricCards />
+          <TopMetricCards metrics={metrics} />
 
           {/* 2. Middle Visualizations Grid (Stacked Bar & Donut) */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
             {/* Left 7 Columns: Weekly Execution Status Stacked Bar Chart */}
             <div className="lg:col-span-7">
-              <ExecutionStatusBarChart />
+              <ExecutionStatusBarChart trends={metrics?.execution_trends} />
             </div>
 
             {/* Right 5 Columns: Requirement Coverage Analysis Donut Chart */}
             <div className="lg:col-span-5">
-              <RequirementCoverageDonut />
+              <RequirementCoverageDonut slices={metrics?.requirement_coverage_slices} />
             </div>
           </div>
 

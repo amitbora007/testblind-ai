@@ -3,7 +3,7 @@ import { spawn } from 'child_process';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
-const SCREENSHOT_DIR = '/home/amit.bora/.gemini/antigravity/brain/160e684f-b1f6-421c-823d-a71670a49889/screenshots';
+const SCREENSHOT_DIR = process.env.SCREENSHOT_DIR || join(process.cwd(), 'screenshots');
 mkdirSync(SCREENSHOT_DIR, { recursive: true });
 
 const VIEWPORTS = [
@@ -146,6 +146,7 @@ async function run() {
       for (const route of ROUTES) {
         totalTested++;
         client.consoleErrors = [];
+        const targetUrl = `http://localhost:3000/#${route}`;
 
         await client.send('Page.navigate', { url: targetUrl });
         await client.send('Runtime.evaluate', {

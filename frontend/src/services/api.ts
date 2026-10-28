@@ -28,6 +28,14 @@ function getHeaders(orgId?: string): HeadersInit {
   return headers;
 }
 
+// Helper to determine if app is actively running in demo mode
+export function isDemoActive(): boolean {
+  if (typeof window === 'undefined') return false;
+  const token = localStorage.getItem('tb_auth_token');
+  if (token) return false;
+  return localStorage.getItem('tb_demo_mode') === 'true';
+}
+
 export interface GitHubStatusResponse {
   configured: boolean;
   connected: boolean;
@@ -35,6 +43,7 @@ export interface GitHubStatusResponse {
   installation_id?: string | null;
   permissions: string[];
   setup_instructions?: string | null;
+  client_id?: string | null;
 }
 
 export interface ZipUploadResult {
@@ -342,12 +351,22 @@ export const api = {
       }
       throw new Error(message);
     }
-    return await res.json();
+    const user: CurrentUserProfile = await res.json();
+    if (user.memberships && user.memberships.length > 0) {
+      localStorage.setItem('tb_active_org_id', user.memberships[0].organization_id);
+      localStorage.setItem('tb_active_org_name', user.memberships[0].organization_name);
+      localStorage.setItem('tb_active_org_slug', user.memberships[0].organization_slug);
+    }
+    localStorage.setItem('tb_user_profile', JSON.stringify(user));
+    return user;
   },
 
   logout(): void {
     localStorage.removeItem('tb_auth_token');
     localStorage.removeItem('tb_active_org_id');
+    localStorage.removeItem('tb_active_org_name');
+    localStorage.removeItem('tb_active_org_slug');
+    localStorage.removeItem('tb_user_profile');
     localStorage.removeItem('tb_demo_mode');
   },
 
@@ -385,6 +404,54 @@ export const api = {
     } catch {
       return [];
     }
+  },
+
+  async connectGitHub(payload: {
+    code?: string;
+    token?: string;
+    installation_id?: string;
+  }): Promise<GitHubStatusResponse> {
+    const res = await fetch(`${API_BASE}/integrations/github/connect`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to connect GitHub' }));
+      throw new Error(err.detail || 'Failed to connect GitHub');
+    }
+    return await res.json();
+  },
+
+  async disconnectGitHub(): Promise<{ status: string; message: string }> {
+    const res = await fetch(`${API_BASE}/integrations/github/disconnect`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to disconnect GitHub' }));
+      throw new Error(err.detail || 'Failed to disconnect GitHub');
+    }
+    return await res.json();
+  },
+
+  async linkGitHubRepo(
+    projectId: string,
+    data: { repo_url: string; default_branch?: string }
+  ): Promise<any> {
+    const res = await fetch(`${API_BASE}/integrations/github/projects/${projectId}/link`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({
+        repo_url: data.repo_url,
+        default_branch: data.default_branch || 'main',
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to link repository' }));
+      throw new Error(err.detail || 'Failed to link repository');
+    }
+    return await res.json();
   },
 
   // Repository ZIP Upload
@@ -503,6 +570,25 @@ export const api = {
     } catch {
       return [];
     }
+  },
+
+  async createProject(data: {
+    name: string;
+    slug?: string;
+    description?: string;
+    framework?: string;
+    default_branch?: string;
+  }): Promise<ProjectResult> {
+    const res = await fetch(`${API_BASE}/projects`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to create project' }));
+      throw new Error(err.detail || 'Failed to create project');
+    }
+    return await res.json();
   },
 
   // Scan Jobs
@@ -821,12 +907,79 @@ export const api = {
     return await res.json();
   },
 
-  async getGithubActionsWorkflowTemplate(): Promise<string> {
-    const res = await fetch(`${API_BASE}/ci/workflow-template`, { headers: getHeaders() });
-    if (!res.ok) throw new Error('Failed to fetch workflow template');
-    return await res.text();
+  async getDashboardMetrics(): Promise<DashboardMetricsResult> {
+    const res = await fetch(`${API_BASE}/dashboard/metrics`, {
+      headers: getHeaders(),
+    });
+    if (!res.ok) {
+      throw new Error('Failed to fetch dashboard metrics');
+    }
+    return await res.json();
+  },
+
+  async getOrganizationMembers(orgId: string): Promise<MemberResult[]> {
+    try {
+      const res = await fetch(`${API_BASE}/organizations/${orgId}/members`, {
+        headers: getHeaders(orgId),
+      });
+      if (!res.ok) return [];
+      return await res.json();
+    } catch {
+      return [];
+    }
+  },
+
+  async inviteOrganizationMember(
+    orgId: string,
+    data: { email: string; role: string; full_name?: string }
+  ): Promise<MemberResult> {
+    const res = await fetch(`${API_BASE}/organizations/${orgId}/members`, {
+      method: 'POST',
+      headers: getHeaders(orgId),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to invite member' }));
+      throw new Error(err.detail || 'Failed to invite member');
+    }
+    return await res.json();
   },
 };
+
+export interface DashboardMetricCard {
+  title: string;
+  value: string;
+  delta: string;
+  delta_type: string;
+  description: string;
+}
+
+export interface DashboardMetricsResult {
+  total_test_cases: DashboardMetricCard;
+  requirement_coverage: DashboardMetricCard;
+  test_scenarios_executed: DashboardMetricCard;
+  ai_insights: DashboardMetricCard;
+  execution_trends: Array<{
+    week: string;
+    passed: number;
+    failed: number;
+    skipped: number;
+  }>;
+  requirement_coverage_slices: Array<{
+    name: string;
+    value: number;
+    color: string;
+  }>;
+}
+
+export interface MemberResult {
+  id: string;
+  user_id: string;
+  email: string;
+  full_name: string;
+  role: 'owner' | 'admin' | 'engineer' | 'viewer';
+  created_at: string;
+}
 
 export interface TestCaseResult {
   id: string;

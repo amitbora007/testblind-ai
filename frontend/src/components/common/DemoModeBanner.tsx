@@ -1,5 +1,6 @@
 import React from 'react';
 import { Terminal } from 'lucide-react';
+import { isDemoActive } from '@/services/api';
 
 export interface DemoModeBannerProps {
   message?: string;
@@ -10,6 +11,9 @@ export function DemoModeBanner({
   message,
   context,
 }: DemoModeBannerProps) {
+  if (!isDemoActive()) {
+    return null;
+  }
   const displayMessage =
     context ||
     message ||

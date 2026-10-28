@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/Table';
 import { Dialog } from '@/components/ui/Dialog';
 import { DemoModeBanner } from '@/components/common/DemoModeBanner';
+import { api, isDemoActive, MemberResult, CurrentUserProfile } from '@/services/api';
 import {
   Users,
   ShieldAlert,
@@ -41,6 +42,15 @@ interface TeamMember {
   status: 'active' | 'invited';
   lastActive: string;
 }
+
+const mapBackendMember = (m: MemberResult): TeamMember => ({
+  id: m.id,
+  name: m.full_name || m.email.split('@')[0],
+  email: m.email,
+  role: m.role || 'engineer',
+  status: 'active',
+  lastActive: m.created_at ? new Date(m.created_at).toLocaleDateString() : 'Active',
+});
 
 interface ApiKeyRecord {
   id: string;
@@ -102,13 +112,107 @@ const INITIAL_KEYS: ApiKeyRecord[] = [
   },
 ];
 
-export function TeamSettingsPage() {
+interface TeamSettingsPageProps {
+  currentUser?: CurrentUserProfile | null;
+}
+
+export function TeamSettingsPage({ currentUser }: TeamSettingsPageProps = {}) {
+  const isDemo = isDemoActive();
   const [activeTab, setActiveTab] = useState('members');
-  const [members, setMembers] = useState<TeamMember[]>(INITIAL_MEMBERS);
-  const [apiKeys, setApiKeys] = useState<ApiKeyRecord[]>(INITIAL_KEYS);
+  const [members, setMembers] = useState<TeamMember[]>(() => isDemo ? INITIAL_MEMBERS : []);
+  const [apiKeys, setApiKeys] = useState<ApiKeyRecord[]>(() => isDemo ? INITIAL_KEYS : []);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const getInitialOrgName = () => {
+    if (isDemo) return 'Acme Corporation';
+    if (currentUser?.memberships?.[0]?.organization_name) {
+      return currentUser.memberships[0].organization_name;
+    }
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('tb_active_org_name');
+      if (stored) return stored;
+      const userStr = localStorage.getItem('tb_user_profile');
+      if (userStr) {
+        try {
+          const u = JSON.parse(userStr);
+          if (u.memberships?.[0]?.organization_name) return u.memberships[0].organization_name;
+        } catch {}
+      }
+    }
+    return 'ABC';
+  };
+
+  const getInitialOrgSlug = () => {
+    if (isDemo) return 'acme-corp';
+    if (currentUser?.memberships?.[0]?.organization_slug) {
+      return currentUser.memberships[0].organization_slug;
+    }
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('tb_active_org_slug');
+      if (stored) return stored;
+      const userStr = localStorage.getItem('tb_user_profile');
+      if (userStr) {
+        try {
+          const u = JSON.parse(userStr);
+          if (u.memberships?.[0]?.organization_slug) return u.memberships[0].organization_slug;
+        } catch {}
+      }
+    }
+    return 'abc';
+  };
+
+  const [orgName, setOrgName] = useState<string>(getInitialOrgName);
+  const [orgSlug, setOrgSlug] = useState<string>(getInitialOrgSlug);
+
+  // Sync if currentUser updates
+  useEffect(() => {
+    if (!isDemo && currentUser?.memberships?.[0]) {
+      setOrgName(currentUser.memberships[0].organization_name || 'ABC');
+      setOrgSlug(currentUser.memberships[0].organization_slug || 'abc');
+    }
+  }, [currentUser, isDemo]);
+
+  // Load live organization details and members
+  useEffect(() => {
+    if (!isDemoActive()) {
+      // If organization name or profile is not populated, fetch profile from backend
+      api.getCurrentUser().then((u) => {
+        if (u.memberships && u.memberships.length > 0) {
+          setOrgName(u.memberships[0].organization_name);
+          setOrgSlug(u.memberships[0].organization_slug);
+          localStorage.setItem('tb_active_org_name', u.memberships[0].organization_name);
+          localStorage.setItem('tb_active_org_slug', u.memberships[0].organization_slug);
+          localStorage.setItem('tb_active_org_id', u.memberships[0].organization_id);
+          localStorage.setItem('tb_user_profile', JSON.stringify(u));
+        }
+      }).catch(() => {});
+
+      const orgId = localStorage.getItem('tb_active_org_id') || currentUser?.memberships?.[0]?.organization_id;
+      if (orgId) {
+        api.getOrganizationMembers(orgId).then((data) => {
+          if (data && data.length > 0) {
+            setMembers(data.map(mapBackendMember));
+          } else {
+            const fallbackUser = currentUser;
+            if (fallbackUser) {
+              setMembers([{
+                id: fallbackUser.id,
+                name: fallbackUser.full_name || 'Amit Bora',
+                email: fallbackUser.email || 'amitbora007@gmail.com',
+                role: 'owner',
+                status: 'active',
+                lastActive: 'Just now',
+              }]);
+            }
+          }
+        }).catch(() => {
+          setMembers([]);
+        });
+      }
+    }
+  }, [currentUser]);
 
   // Invite form state
   const [inviteName, setInviteName] = useState('');
@@ -131,9 +235,31 @@ export function TeamSettingsPage() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  const handleInvite = (e: React.FormEvent) => {
+  const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inviteName.trim() || !inviteEmail.trim()) return;
+
+    if (!isDemoActive()) {
+      const orgId = localStorage.getItem('tb_active_org_id');
+      if (orgId) {
+        try {
+          const invited = await api.inviteOrganizationMember(orgId, {
+            email: inviteEmail.trim(),
+            full_name: inviteName.trim(),
+            role: inviteRole,
+          });
+          setMembers((prev) => [...prev, mapBackendMember(invited)]);
+          setShowInviteModal(false);
+          setInviteName('');
+          setInviteEmail('');
+          showToast(`Invitation sent to ${inviteEmail.trim()}`);
+          return;
+        } catch (err: any) {
+          showToast(err.message || 'Failed to send invite');
+          return;
+        }
+      }
+    }
 
     const newMember: TeamMember = {
       id: `MEM-0${members.length + 1}`,
@@ -216,7 +342,7 @@ export function TeamSettingsPage() {
         </div>
 
         <Badge variant="cyan" size="md">
-          Enterprise Plan (Demo Sandbox)
+          {isDemo ? 'Enterprise Plan (Demo Sandbox)' : 'Enterprise Plan (Production Active)'}
         </Badge>
       </div>
 
@@ -240,8 +366,10 @@ export function TeamSettingsPage() {
                 <Building className="w-5 h-5 text-brand-teal" />
               </div>
               <div>
-                <h3 className="text-sm font-semibold text-slate-100">Acme Corporation</h3>
-                <span className="text-xs text-slate-400 font-mono">slug: acme-corp &bull; SSO: Enabled (Google Workspace)</span>
+                <h3 className="text-sm font-semibold text-slate-100">{orgName}</h3>
+                <span className="text-xs text-slate-400 font-mono">
+                  slug: {orgSlug} &bull; SSO: {isDemo ? 'Enabled (Google Workspace)' : 'Active (Local / OAuth)'}
+                </span>
               </div>
             </div>
 
@@ -512,32 +640,40 @@ export function TeamSettingsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {apiKeys.map((key) => (
-                    <TableRow key={key.id}>
-                      <TableCell className="text-xs font-medium text-slate-200">
-                        {key.name}
-                      </TableCell>
-                      <TableCell className="text-xs font-mono text-cyan-400">
-                        {key.prefix}
-                      </TableCell>
-                      <TableCell className="text-xs text-slate-400">
-                        {key.createdAt}
-                      </TableCell>
-                      <TableCell className="text-xs text-slate-400">
-                        {key.lastUsed}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleRevokeKey(key.id, key.name)}
-                          className="text-xs text-rose-400 hover:text-rose-300 hover:bg-rose-950/30"
-                        >
-                          Revoke
-                        </Button>
+                  {apiKeys.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="py-8 text-center text-slate-500 text-xs">
+                        No API keys generated yet. Click &quot;Generate API Key&quot; to create access tokens for CI runners.
                       </TableCell>
                     </TableRow>
-                  ))}
+                  ) : (
+                    apiKeys.map((key) => (
+                      <TableRow key={key.id}>
+                        <TableCell className="text-xs font-medium text-slate-200">
+                          {key.name}
+                        </TableCell>
+                        <TableCell className="text-xs font-mono text-cyan-400">
+                          {key.prefix}
+                        </TableCell>
+                        <TableCell className="text-xs text-slate-400">
+                          {key.createdAt}
+                        </TableCell>
+                        <TableCell className="text-xs text-slate-400">
+                          {key.lastUsed}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRevokeKey(key.id, key.name)}
+                            className="text-xs text-rose-400 hover:text-rose-300 hover:bg-rose-950/30"
+                          >
+                            Revoke
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
                 </TableBody>
               </Table>
             </div>
@@ -547,18 +683,27 @@ export function TeamSettingsPage() {
           <Card className="p-4 bg-slate-900/50 border-slate-800 space-y-3">
             <h4 className="text-xs font-semibold text-slate-300">Recent Workspace Audit Events</h4>
             <div className="space-y-2 text-xs font-mono">
-              <div className="p-2.5 bg-slate-950/60 border border-slate-800/80 rounded flex items-center justify-between text-slate-400">
-                <span>[2026-10-26 11:42:01] Token tb_sec_9a12 rotated by amit.bora</span>
-                <Badge variant="cyan" size="sm">Auth Audit</Badge>
-              </div>
-              <div className="p-2.5 bg-slate-950/60 border border-slate-800/80 rounded flex items-center justify-between text-slate-400">
-                <span>[2026-10-26 09:15:33] Runner CPU quota updated to 2 vCPU</span>
-                <Badge variant="purple" size="sm">Security Policy</Badge>
-              </div>
-              <div className="p-2.5 bg-slate-950/60 border border-slate-800/80 rounded flex items-center justify-between text-slate-400">
-                <span>[2026-10-25 18:20:10] Elena Rostova invited to organization</span>
-                <Badge variant="blue" size="sm">Member Event</Badge>
-              </div>
+              {!isDemo ? (
+                <div className="p-2.5 bg-slate-950/60 border border-slate-800/80 rounded flex items-center justify-between text-slate-400">
+                  <span>[Workspace Audit] Initialized workspace environment for {orgName} ({orgSlug})</span>
+                  <Badge variant="cyan" size="sm">Workspace Init</Badge>
+                </div>
+              ) : (
+                <>
+                  <div className="p-2.5 bg-slate-950/60 border border-slate-800/80 rounded flex items-center justify-between text-slate-400">
+                    <span>[2026-10-26 11:42:01] Token tb_sec_9a12 rotated by amit.bora</span>
+                    <Badge variant="cyan" size="sm">Auth Audit</Badge>
+                  </div>
+                  <div className="p-2.5 bg-slate-950/60 border border-slate-800/80 rounded flex items-center justify-between text-slate-400">
+                    <span>[2026-10-26 09:15:33] Runner CPU quota updated to 2 vCPU</span>
+                    <Badge variant="purple" size="sm">Security Policy</Badge>
+                  </div>
+                  <div className="p-2.5 bg-slate-950/60 border border-slate-800/80 rounded flex items-center justify-between text-slate-400">
+                    <span>[2026-10-25 18:20:10] Elena Rostova invited to organization</span>
+                    <Badge variant="blue" size="sm">Member Event</Badge>
+                  </div>
+                </>
+              )}
             </div>
           </Card>
         </div>

@@ -21,11 +21,16 @@ class GitHubStatusRead(BaseModel):
         None,
         description="Clear instructions on how to set up GitHub credentials if unconfigured.",
     )
+    client_id: Optional[str] = Field(
+        None,
+        description="GitHub OAuth App client identifier for constructing authorization URLs.",
+    )
 
 
 class GitHubConnectRequest(BaseModel):
     code: Optional[str] = Field(None, description="OAuth temporary authorization code.")
     installation_id: Optional[str] = Field(None, description="GitHub App installation ID.")
+    token: Optional[str] = Field(None, description="GitHub Personal Access Token (PAT) or OAuth access token.")
 
 
 class GitHubRepoItem(BaseModel):

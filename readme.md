@@ -98,6 +98,7 @@ flowchart LR
 
 | Document | Purpose & Canonical Scope |
 | :--- | :--- |
+| **[`usage.md`](./docs/usage.md)** | Canonical user manual, end-to-end workflows, code ingestion, and UI module guide. |
 | **[`product-spec.md`](./docs/product-spec.md)** | Canonical product requirements, personas, workflows, functional modules, and NFRs. |
 | **[`architecture.md`](./docs/architecture.md)** | Detailed system architecture, data models, sandboxing security specifications, and API protocols. |
 | **[`design.md`](./docs/design.md)** | Design tokens, TraceAI Studio UI components, responsive layout, and WCAG accessibility standards. |

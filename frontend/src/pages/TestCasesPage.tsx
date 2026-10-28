@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/Table';
 import { Dialog } from '@/components/ui/Dialog';
 import { DemoModeBanner } from '@/components/common/DemoModeBanner';
-import { api, TestCaseResult, ProjectResult } from '@/services/api';
+import { api, isDemoActive, TestCaseResult, ProjectResult } from '@/services/api';
 import {
   CheckSquare,
   Search,
@@ -96,12 +96,11 @@ export function TestCasesPage() {
           setTestCases(data);
           setIsLiveBackend(true);
         } else {
-          // If empty, supply representative initial mock items
-          setTestCases(MOCK_INITIAL_CASES);
-          setIsLiveBackend(false);
+          setTestCases(isDemoActive() ? MOCK_INITIAL_CASES : []);
+          setIsLiveBackend(true);
         }
       } catch {
-        setTestCases(MOCK_INITIAL_CASES);
+        setTestCases(isDemoActive() ? MOCK_INITIAL_CASES : []);
         setIsLiveBackend(false);
       } finally {
         setIsLoading(false);
@@ -622,6 +621,17 @@ export function TestCasesPage() {
   );
 
   function renderTable(items: TestCaseResult[]) {
+    if (items.length === 0) {
+      return (
+        <div className="p-8 text-center border-t border-slate-800">
+          <p className="text-sm font-semibold text-slate-200">No test cases found</p>
+          <p className="text-xs text-slate-500 mt-1">
+            Generate tests via AST Mutation Gap Discovery or Incident-to-Regression, or click New Test Case.
+          </p>
+        </div>
+      );
+    }
+
     return (
       <Table>
         <TableHeader>

@@ -32,7 +32,7 @@ import {
   Hash,
   Database
 } from 'lucide-react';
-import { api, ProjectResult, IncidentResult, IncidentVerifyResult } from '@/services/api';
+import { api, isDemoActive, ProjectResult, IncidentResult, IncidentVerifyResult } from '@/services/api';
 
 // Fallback demo records if backend is offline
 const DEMO_INCIDENTS: IncidentResult[] = [
@@ -132,8 +132,8 @@ IndexError: list index out of range`,
 export function IncidentAnalysisPage() {
   const [projects, setProjects] = useState<ProjectResult[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
-  const [incidents, setIncidents] = useState<IncidentResult[]>(DEMO_INCIDENTS);
-  const [selectedIncident, setSelectedIncident] = useState<IncidentResult>(DEMO_INCIDENTS[0]);
+  const [incidents, setIncidents] = useState<IncidentResult[]>(() => isDemoActive() ? DEMO_INCIDENTS : []);
+  const [selectedIncident, setSelectedIncident] = useState<IncidentResult | null>(() => isDemoActive() ? DEMO_INCIDENTS[0] : null);
   const [isLiveBackend, setIsLiveBackend] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
@@ -175,16 +175,24 @@ export function IncidentAnalysisPage() {
             setIncidents(fetchedIncidents);
             setSelectedIncident(fetchedIncidents[0]);
             setEditableReproCode(fetchedIncidents[0].repro_code || '');
+          } else {
+            setIncidents(isDemoActive() ? DEMO_INCIDENTS : []);
+            setSelectedIncident(isDemoActive() ? DEMO_INCIDENTS[0] : null);
+            setEditableReproCode(isDemoActive() ? (DEMO_INCIDENTS[0].repro_code || '') : '');
           }
           setIsLiveBackend(true);
         } else {
           setIsLiveBackend(false);
-          setEditableReproCode(DEMO_INCIDENTS[0].repro_code || '');
+          setIncidents(isDemoActive() ? DEMO_INCIDENTS : []);
+          setSelectedIncident(isDemoActive() ? DEMO_INCIDENTS[0] : null);
+          setEditableReproCode(isDemoActive() ? (DEMO_INCIDENTS[0].repro_code || '') : '');
         }
       } catch (err) {
         console.warn('Backend offline; using fallback demo mode', err);
         setIsLiveBackend(false);
-        setEditableReproCode(DEMO_INCIDENTS[0].repro_code || '');
+        setIncidents(isDemoActive() ? DEMO_INCIDENTS : []);
+        setSelectedIncident(isDemoActive() ? DEMO_INCIDENTS[0] : null);
+        setEditableReproCode(isDemoActive() ? (DEMO_INCIDENTS[0].repro_code || '') : '');
       } finally {
         setIsLoading(false);
       }
@@ -849,6 +857,30 @@ export function IncidentAnalysisPage() {
                     Lock & Promote to Shared Library
                   </Button>
                 </div>
+              </div>
+            </Card>
+          )}
+
+          {!selectedIncident && (
+            <Card className="p-12 text-center text-slate-400 space-y-4 bg-slate-900/40 border-dashed border-slate-800">
+              <div className="w-12 h-12 rounded-xl bg-purple-950/60 border border-purple-500/30 text-purple-400 mx-auto flex items-center justify-center">
+                <Flame className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-white">No Incident Selected</h3>
+                <p className="text-xs text-slate-400 max-w-md mx-auto mt-1">
+                  Select an incident from the queue on the left, or click "Intake Incident" to submit a production stack trace and generate reproduction tests.
+                </p>
+              </div>
+              <div className="pt-2">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  leftIcon={<PlusCircle className="w-3.5 h-3.5" />}
+                  onClick={() => setIsIntakeModalOpen(true)}
+                >
+                  Intake Incident
+                </Button>
               </div>
             </Card>
           )}

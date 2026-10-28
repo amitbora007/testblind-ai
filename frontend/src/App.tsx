@@ -1,25 +1,30 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { AuthPage } from '@/pages/AuthPage';
-import { DashboardPage } from '@/pages/DashboardPage';
-import { ProjectsPage } from '@/pages/ProjectsPage';
-import { RepositoriesPage } from '@/pages/RepositoriesPage';
-import { CodeLabPage } from '@/pages/CodeLabPage';
-import { GapDiscoveryPage } from '@/pages/GapDiscoveryPage';
-import { IncidentAnalysisPage } from '@/pages/IncidentAnalysisPage';
-import { TestCasesPage } from '@/pages/TestCasesPage';
-import { TestScenariosPage } from '@/pages/TestScenariosPage';
-import { ExecutionRunsPage } from '@/pages/ExecutionRunsPage';
-import { ReportsPage } from '@/pages/ReportsPage';
-import { AiInsightsPage } from '@/pages/AiInsightsPage';
-import { IntegrationsPage } from '@/pages/IntegrationsPage';
-import { TeamSettingsPage } from '@/pages/TeamSettingsPage';
-import { PlaceholderPage } from '@/pages/PlaceholderPage';
+import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import { api, CurrentUserProfile } from '@/services/api';
+
+const DashboardPage = lazy(() => import('@/pages/DashboardPage').then(m => ({ default: m.DashboardPage })));
+const ProjectsPage = lazy(() => import('@/pages/ProjectsPage').then(m => ({ default: m.ProjectsPage })));
+const CodeLabPage = lazy(() => import('@/pages/CodeLabPage').then(m => ({ default: m.CodeLabPage })));
+const GapDiscoveryPage = lazy(() => import('@/pages/GapDiscoveryPage').then(m => ({ default: m.GapDiscoveryPage })));
+const IncidentAnalysisPage = lazy(() => import('@/pages/IncidentAnalysisPage').then(m => ({ default: m.IncidentAnalysisPage })));
+const TestCasesPage = lazy(() => import('@/pages/TestCasesPage').then(m => ({ default: m.TestCasesPage })));
+const TestScenariosPage = lazy(() => import('@/pages/TestScenariosPage').then(m => ({ default: m.TestScenariosPage })));
+const ExecutionRunsPage = lazy(() => import('@/pages/ExecutionRunsPage').then(m => ({ default: m.ExecutionRunsPage })));
+const ReportsPage = lazy(() => import('@/pages/ReportsPage').then(m => ({ default: m.ReportsPage })));
+const AiInsightsPage = lazy(() => import('@/pages/AiInsightsPage').then(m => ({ default: m.AiInsightsPage })));
+const IntegrationsPage = lazy(() => import('@/pages/IntegrationsPage').then(m => ({ default: m.IntegrationsPage })));
+const TeamSettingsPage = lazy(() => import('@/pages/TeamSettingsPage').then(m => ({ default: m.TeamSettingsPage })));
+const PlaceholderPage = lazy(() => import('@/pages/PlaceholderPage').then(m => ({ default: m.PlaceholderPage })));
 
 export function App() {
   const getInitialRoute = () => {
     if (typeof window !== 'undefined') {
+      const searchParams = new URLSearchParams(window.location.search);
+      if (searchParams.has('code')) {
+        return 'projects';
+      }
       const hash = window.location.hash.replace(/^#\/?/, '');
       return hash || 'dashboard';
     }
@@ -122,9 +127,8 @@ export function App() {
       case 'dashboard':
         return <DashboardPage />;
       case 'projects':
-        return <ProjectsPage />;
       case 'repositories':
-        return <RepositoriesPage />;
+        return <ProjectsPage />;
       case 'code-lab':
         return <CodeLabPage />;
       case 'gap-discovery':
@@ -144,7 +148,7 @@ export function App() {
       case 'integrations':
         return <IntegrationsPage />;
       case 'team-settings':
-        return <TeamSettingsPage />;
+        return <TeamSettingsPage currentUser={currentUser} />;
       default:
         return (
           <PlaceholderPage
@@ -163,7 +167,20 @@ export function App() {
       isDemoMode={isDemoMode}
       onLogout={handleLogout}
     >
-      {renderCurrentPage()}
+      <ErrorBoundary fallbackTitle={`Error Loading ${currentRoute}`}>
+        <Suspense
+          fallback={
+            <div className="flex items-center justify-center py-20 text-slate-400">
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                <span className="text-xs font-mono">Loading module...</span>
+              </div>
+            </div>
+          }
+        >
+          {renderCurrentPage()}
+        </Suspense>
+      </ErrorBoundary>
     </AppLayout>
   );
 }
