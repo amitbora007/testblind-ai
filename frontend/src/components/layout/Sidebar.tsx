@@ -63,7 +63,7 @@ export function Sidebar({
   const renderNavContent = () => (
     <div className="flex flex-col h-full bg-sidebar border-r border-slate-800/80">
       {/* Brand Header */}
-      <div className="h-16 flex items-center justify-between px-4 border-b border-slate-800/80">
+      <div className="h-16 shrink-0 flex items-center justify-between px-4 border-b border-slate-800/80">
         <BrandLogo collapsed={isCollapsed} />
         {/* Mobile close button */}
         <button
@@ -76,7 +76,7 @@ export function Sidebar({
       </div>
 
       {/* Navigation List */}
-      <nav className="flex-1 overflow-y-auto px-2 py-4 space-y-1">
+      <nav className="flex-1 overflow-y-auto px-2 py-4 space-y-1 min-h-0">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const isActive = currentRoute === item.id;
@@ -130,7 +130,7 @@ export function Sidebar({
       </nav>
 
       {/* Footer & Collapse Toggle (Desktop only) */}
-      <div className="p-3 border-t border-slate-800/80 hidden lg:flex items-center justify-between">
+      <div className="p-3 border-t border-slate-800/80 hidden lg:flex items-center justify-between shrink-0">
         {!isCollapsed && (
           <div className="flex items-center gap-2 text-xs text-slate-500">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -160,7 +160,7 @@ export function Sidebar({
       {/* Desktop Sidebar */}
       <aside
         className={cn(
-          'hidden lg:block shrink-0 transition-all duration-300 ease-in-out h-screen sticky top-0 z-30',
+          'hidden lg:flex flex-col shrink-0 transition-all duration-300 ease-in-out h-full sticky top-0 z-30',
           isCollapsed ? 'w-[68px]' : 'w-[240px]'
         )}
       >

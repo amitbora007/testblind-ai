@@ -24,6 +24,12 @@
     --color-status-primary: #3B82F6;
   }
 
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
   html {
     scrollbar-gutter: stable;
     color-scheme: dark;

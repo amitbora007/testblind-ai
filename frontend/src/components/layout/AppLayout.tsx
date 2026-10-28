@@ -93,7 +93,7 @@ export function AppLayout({
   }, []);
 
   return (
-    <div className="flex min-h-screen bg-canvas-base text-slate-100 overflow-x-hidden w-full">
+    <div className="flex h-screen h-[100dvh] bg-canvas-base text-slate-100 overflow-hidden w-full">
       {/* Sidebar Navigation */}
       <Sidebar
         currentRoute={currentRoute}
@@ -105,7 +105,7 @@ export function AppLayout({
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 w-full overflow-x-hidden">
+      <div className="flex-1 flex flex-col h-full min-w-0 w-full overflow-hidden">
         <Header
           currentRouteTitle={currentTitle}
           onMobileMenuToggle={() => setIsMobileOpen(true)}
@@ -118,7 +118,7 @@ export function AppLayout({
           onNavigate={onRouteChange}
         />
 
-        <main className="flex-1 p-3 sm:p-6 lg:p-8 overflow-y-auto overflow-x-hidden min-w-0 w-full">
+        <main id="main-content" className="flex-1 p-3 sm:p-6 lg:p-8 overflow-y-auto overflow-x-hidden min-w-0 w-full focus:outline-none">
           <div className="max-w-7xl mx-auto space-y-6 min-w-0 w-full">{children}</div>
         </main>
       </div>

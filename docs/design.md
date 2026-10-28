@@ -106,8 +106,11 @@ The primary dashboard implements a pixel-faithful recreation of `references/aito
 
 #### Detailed Breakdown of Dashboard Elements:
 1. **Left Navigation Sidebar:**
-   - Width: 240px (desktop), collapsible to 64px icon bar on tablet, slide-over drawer on mobile.
-   - Brand Header: Cyan-to-Purple icon + "TraceAI Studio / TestBlind AI" wordmark.
+   - Width: 240px (desktop), collapsible to 68px icon bar, slide-over drawer on mobile (`< 1024px`).
+   - Fixed Viewport App Shell: Anchored to full viewport height (`h-screen h-[100dvh] flex flex-col`) with `sticky top-0 shrink-0 z-30`. Content scrolling occurs strictly within `<main>`, ensuring the sidebar never scrolls out of the viewport.
+   - Brand Header: Fixed at top with Cyan-to-Purple icon + "TraceAI Studio / by TestBlind AI" wordmark (`h-16 shrink-0`).
+   - Navigation List: Independently scrollable (`overflow-y-auto min-h-0`) if the viewport height is constrained.
+   - Footer: Permanently docked at the bottom (`shrink-0`) featuring "Runner Engine Live" pulse indicator and sidebar collapse chevron toggle.
    - Navigation Items:
      - Dashboard (`LayoutDashboard` icon) — Active state with solid electric-blue indicator pill.
      - Test Cases (`CheckSquare` icon)
