@@ -558,7 +558,7 @@ async def synthesize_mutation_test(
     )
 
     gap = LLMTestSynthesizer.explain_gap(source_code, mut_spec)
-    synthesized_test = LLMTestSynthesizer.synthesize_killing_test(source_code, mut_spec, module_name=module_name)
+    synthesized_test = await LLMTestSynthesizer.synthesize_killing_test_async(source_code, mut_spec, module_name=module_name)
 
     # Perform dual-state validation
     outcome = await DualStateTestValidator.validate_candidate_test(

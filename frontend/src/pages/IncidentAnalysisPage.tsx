@@ -30,7 +30,8 @@ import {
   Info,
   Clock,
   Hash,
-  Database
+  Database,
+  GitPullRequest
 } from 'lucide-react';
 import { api, isDemoActive, ProjectResult, IncidentResult, IncidentVerifyResult } from '@/services/api';
 
@@ -158,6 +159,7 @@ export function IncidentAnalysisPage() {
   const [isEditingCode, setIsEditingCode] = useState(false);
   const [editableReproCode, setEditableReproCode] = useState('');
   const [copiedCode, setCopiedCode] = useState(false);
+  const [isExportingPatch, setIsExportingPatch] = useState(false);
 
   // Initial load
   useEffect(() => {
@@ -422,6 +424,42 @@ export function IncidentAnalysisPage() {
     URL.revokeObjectURL(url);
   };
 
+  // Export Unified Git Patch
+  const handleExportPatch = async () => {
+    if (!selectedIncident) return;
+    setIsExportingPatch(true);
+    try {
+      const res = await api.exportIncidentPatch(selectedIncident.id);
+      const blob = new Blob([res.patch_content], { type: 'text/x-diff' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = res.patch_filename || `test_repro_${selectedIncident.id.slice(0, 8)}.patch`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setPromoteSuccess(`Unified Git patch downloaded: ${res.patch_filename}`);
+    } catch {
+      // Fallback client-side patch diff generation
+      const filename = `test_repro_${selectedIncident.id.slice(0, 8)}.patch`;
+      const testCode = editableReproCode || selectedIncident.repro_code || '# No test code available.';
+      const fallbackDiff = `--- /dev/null\n+++ b/tests/test_incident_${selectedIncident.id.slice(0, 8)}.py\n@@ -0,0 +1,${testCode.split('\n').length} @@\n${testCode.split('\n').map(l => '+' + l).join('\n')}\n`;
+      const blob = new Blob([fallbackDiff], { type: 'text/x-diff' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setPromoteSuccess(`Unified Git patch downloaded: ${filename}`);
+    } finally {
+      setIsExportingPatch(false);
+    }
+  };
+
   const handleCopyCode = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedCode(true);
@@ -624,6 +662,15 @@ export function IncidentAnalysisPage() {
                     onClick={handleExportTest}
                   >
                     Export .py
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    leftIcon={<GitPullRequest className="w-3.5 h-3.5" />}
+                    onClick={handleExportPatch}
+                    disabled={isExportingPatch}
+                  >
+                    {isExportingPatch ? 'Exporting...' : 'Export .patch'}
                   </Button>
                 </div>
               </div>

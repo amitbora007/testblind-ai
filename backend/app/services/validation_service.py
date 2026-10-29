@@ -43,12 +43,15 @@ class DualStateTestValidator:
         cmd = [sys.executable, "-m", "pytest", "-v", "--tb=short", f"test_{module_name}.py"]
 
         conftest_stub = (
-            "import sys, os, builtins, types\n"
-            "from unittest.mock import MagicMock\n"
-            "from importlib.machinery import ModuleSpec\n\n"
+            "import sys, os, builtins, types, asyncio\n"
+            "from unittest.mock import MagicMock, AsyncMock\n"
+            "from importlib.machinery import ModuleSpec\n"
+            "import pytest\n\n"
             "class AutoMock(types.ModuleType):\n"
             "    def __getattr__(self, name):\n"
-            "        return MagicMock()\n\n"
+            "        mock = MagicMock()\n"
+            "        mock.__await__ = lambda self: asyncio.sleep(0, result=MagicMock()).__await__()\n"
+            "        return mock\n\n"
             "class AutoMockFinder:\n"
             "    @classmethod\n"
             "    def find_spec(cls, fullname, path=None, target=None):\n"
@@ -75,7 +78,14 @@ class DualStateTestValidator:
             "os.get_terminal_size = _safe_get_terminal_size\n\n"
             "def _mock_input(prompt=''):\n"
             "    return '5'\n"
-            "builtins.input = _mock_input\n"
+            "builtins.input = _mock_input\n\n"
+            "@pytest.fixture\n"
+            "def db_session():\n"
+            "    s = AsyncMock()\n"
+            "    s.execute = AsyncMock(return_value=MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[]), first=MagicMock(return_value=None)))))\n"
+            "    s.commit = AsyncMock()\n"
+            "    s.rollback = AsyncMock()\n"
+            "    return s\n"
         )
 
         # -------------------------------------------------------------

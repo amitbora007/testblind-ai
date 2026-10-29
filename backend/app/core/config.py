@@ -33,6 +33,15 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
 
+    # LLM Synthesis Providers & Models
+    DEFAULT_LLM_PROVIDER: str = "local"  # "local" | "anthropic" | "openai" | "gemini"
+    DEFAULT_LLM_MODEL: Union[str, None] = None
+    ANTHROPIC_API_KEY: Union[str, None] = None
+    OPENAI_API_KEY: Union[str, None] = None
+    GEMINI_API_KEY: Union[str, None] = None
+    LLM_TEMPERATURE: float = 0.1
+    LLM_TIMEOUT_SECONDS: int = 30
+
     # GitHub App & OAuth Integration (Optional environment secrets)
     GITHUB_CLIENT_ID: Union[str, None] = None
     GITHUB_CLIENT_SECRET: Union[str, None] = None

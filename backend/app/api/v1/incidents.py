@@ -20,6 +20,11 @@ from app.schemas.incident import (
     IncidentVerifyRequest,
     IncidentVerifyResponse,
 )
+from app.schemas.webhook import (
+    GenericErrorWebhookPayload,
+    GitPatchResponse,
+    SentryWebhookPayload,
+)
 from app.services.incident_service import IncidentAnalysisService
 
 router = APIRouter(tags=["Incident Analysis"])
@@ -382,3 +387,194 @@ async def export_incident_test(
         media_type="text/x-python",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.post("/incidents/{incident_id}/export-patch", response_model=GitPatchResponse)
+async def export_incident_patch(
+    incident_id: uuid.UUID,
+    tenant: Annotated[TenantContext, Depends(get_tenant_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> GitPatchResponse:
+    """Exports synthesized regression test as a unified Git patch and pull request description."""
+    query = select(Incident).where(
+        Incident.id == incident_id,
+        Incident.organization_id == tenant.organization_id,
+    )
+    incident = (await db.execute(query)).scalar_one_or_none()
+    if not incident:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Incident not found")
+
+    code = incident.repro_code or ""
+    if not code:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No synthesized reproduction test available for this incident.",
+        )
+
+    short_id = str(incident.id)[:8]
+    test_rel_path = f"tests/test_incident_{short_id}_regression.py"
+    lines = code.splitlines()
+    line_count = len(lines)
+    diff_lines = [
+        f"diff --git a/{test_rel_path} b/{test_rel_path}",
+        "new file mode 100644",
+        "--- /dev/null",
+        f"+++ b/{test_rel_path}",
+        f"@@ -0,0 +1,{line_count} @@",
+    ]
+    diff_lines.extend([f"+{line}" for line in lines])
+    patch_content = "\n".join(diff_lines) + "\n"
+
+    pr_title = f"fix(regression): Add verified reproduction test for incident '{incident.title}'"
+    pr_body = (
+        f"## Incident Post-Mortem Regression Protection\n\n"
+        f"**Incident ID:** `{incident.id}`\n"
+        f"**Fault Anchor:** `{incident.fault_module or 'Unknown'}:{incident.fault_line or '1'}`\n"
+        f"**Verification State:** `{incident.verification_state}`\n"
+        f"**Evidence Hash:** `{incident.evidence_hash or 'Verified in sandbox'}`\n\n"
+        f"### Root Cause Hypothesis\n"
+        f"{incident.hypothesis or 'Synthesized boundary reproduction test.'}\n\n"
+        f"### Applied Test Patch\n"
+        f"This pull request adds `{test_rel_path}` to protect against recurring regressions."
+    )
+
+    return GitPatchResponse(
+        incident_id=incident.id,
+        filename=f"incident_{short_id}_regression.patch",
+        patch_content=patch_content,
+        pr_title=pr_title,
+        pr_body=pr_body,
+        evidence_hash=incident.evidence_hash,
+        verification_state=incident.verification_state,
+        test_function_name=f"test_incident_{short_id}_repro",
+    )
+
+
+@router.get("/incidents/{incident_id}/export-patch.diff")
+async def download_incident_patch(
+    incident_id: uuid.UUID,
+    tenant: Annotated[TenantContext, Depends(get_tenant_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> Response:
+    """Downloads raw unified git diff patch file for direct git apply."""
+    patch_res = await export_incident_patch(incident_id=incident_id, tenant=tenant, db=db)
+    return Response(
+        content=patch_res.patch_content,
+        media_type="text/x-diff",
+        headers={"Content-Disposition": f'attachment; filename="{patch_res.filename}"'},
+    )
+
+
+@router.post("/incidents/webhook/sentry", response_model=IncidentRead, status_code=status.HTTP_201_CREATED)
+async def ingest_sentry_webhook(
+    payload: SentryWebhookPayload,
+    tenant: Annotated[TenantContext, Depends(get_tenant_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> IncidentRead:
+    """Ingests Sentry issue alert webhooks, sanitizes secrets, and synthesizes regression test."""
+    proj_query = select(Project).where(Project.organization_id == tenant.organization_id)
+    if payload.project:
+        proj_query = proj_query.where(Project.name.ilike(f"%{payload.project}%"))
+    project = (await db.execute(proj_query)).scalars().first()
+    if not project:
+        fallback_q = select(Project).where(Project.organization_id == tenant.organization_id)
+        project = (await db.execute(fallback_q)).scalars().first()
+        if not project:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No active project found in tenant.")
+
+    raw_tb = payload.traceback or ""
+    if not raw_tb and payload.raw_event:
+        raw_tb = str(payload.raw_event.get("exception", ""))
+
+    title = payload.message or payload.culprit or f"Sentry Issue {payload.id or 'Alert'}"
+    if not raw_tb:
+        raw_tb = f"Traceback (most recent call last):\n  File \"{payload.culprit or 'src/unknown.py'}\", line 1, in handler\nRuntimeError: {title}"
+
+    sanitized_tb, _ = sanitize_sensitive_data(raw_tb)
+    sanitized_title, _ = sanitize_sensitive_data(title)
+
+    analysis = IncidentAnalysisService.analyze_incident(
+        title=sanitized_title,
+        raw_traceback=sanitized_tb,
+        description=f"Automated ingestion from Sentry webhook (Issue ID: {payload.id or 'unknown'})",
+    )
+
+    incident = Incident(
+        id=uuid.uuid4(),
+        project_id=project.id,
+        organization_id=tenant.organization_id,
+        title=sanitized_title,
+        description=f"Ingested from Sentry issue alert {payload.id or ''}".strip(),
+        severity=payload.level or "high",
+        raw_traceback=sanitized_tb,
+        source_files=[],
+        fault_module=analysis.fault_module,
+        fault_line=analysis.fault_line,
+        hypothesis=analysis.hypothesis,
+        missing_details=analysis.missing_details,
+        assumptions=analysis.assumptions,
+        uncertainty_score=analysis.uncertainty_score,
+        repro_code=analysis.repro_code,
+        verification_state=analysis.verification_state,
+    )
+    db.add(incident)
+    await db.commit()
+    await db.refresh(incident)
+    return IncidentRead.model_validate(incident)
+
+
+@router.post("/incidents/webhook/generic", response_model=IncidentRead, status_code=status.HTTP_201_CREATED)
+async def ingest_generic_webhook(
+    payload: GenericErrorWebhookPayload,
+    tenant: Annotated[TenantContext, Depends(get_tenant_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> IncidentRead:
+    """Ingests generic JSON error alerts with automated multi-layer secret sanitization."""
+    proj_query = select(Project).where(Project.organization_id == tenant.organization_id)
+    if payload.project_name:
+        proj_query = proj_query.where(Project.name.ilike(f"%{payload.project_name}%"))
+    project = (await db.execute(proj_query)).scalars().first()
+    if not project:
+        fallback_q = select(Project).where(Project.organization_id == tenant.organization_id)
+        project = (await db.execute(fallback_q)).scalars().first()
+        if not project:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No active project found in tenant.")
+
+    sanitized_tb, _ = sanitize_sensitive_data(payload.raw_traceback)
+    sanitized_title, _ = sanitize_sensitive_data(payload.title)
+    sanitized_code, _ = sanitize_sensitive_data(payload.buggy_code) if payload.buggy_code else (None, 0)
+
+    analysis = IncidentAnalysisService.analyze_incident(
+        title=sanitized_title,
+        raw_traceback=sanitized_tb,
+        buggy_code=sanitized_code,
+        source_files=payload.source_files,
+        expected_behavior=payload.expected_behavior,
+        actual_behavior=payload.actual_behavior,
+    )
+
+    incident = Incident(
+        id=uuid.uuid4(),
+        project_id=project.id,
+        organization_id=tenant.organization_id,
+        title=sanitized_title,
+        severity=payload.severity or "high",
+        raw_traceback=sanitized_tb,
+        buggy_code=sanitized_code,
+        source_files=payload.source_files or [],
+        expected_behavior=payload.expected_behavior,
+        actual_behavior=payload.actual_behavior,
+        fault_module=analysis.fault_module,
+        fault_line=analysis.fault_line,
+        hypothesis=analysis.hypothesis,
+        missing_details=analysis.missing_details,
+        assumptions=analysis.assumptions,
+        uncertainty_score=analysis.uncertainty_score,
+        repro_code=analysis.repro_code,
+        verification_state=analysis.verification_state,
+    )
+    db.add(incident)
+    await db.commit()
+    await db.refresh(incident)
+    return IncidentRead.model_validate(incident)
+

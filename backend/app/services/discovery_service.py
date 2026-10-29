@@ -133,7 +133,16 @@ class TestDiscoveryService:
             return "invalid", None
 
         original_content = target_file.read_text(encoding="utf-8")
-        cmd = test_cmd or [sys.executable, "-m", "pytest", "-v", "--tb=short"]
+        if not test_cmd:
+            from app.services.impact_analysis import TestImpactAnalyzer
+            impacted = TestImpactAnalyzer.get_impacted_tests(workspace_dir, file_rel_path)
+            if impacted:
+                cmd = [sys.executable, "-m", "pytest", "-v", "--tb=short"] + impacted
+            else:
+                cmd = [sys.executable, "-m", "pytest", "-v", "--tb=short"]
+        else:
+            cmd = test_cmd
+
         cfg = ExecutionSandboxConfig(
             wall_timeout_seconds=timeout_seconds,
             custom_env={"PYTHONPATH": f".:{workspace_dir}", "COLUMNS": "80", "LINES": "24"},

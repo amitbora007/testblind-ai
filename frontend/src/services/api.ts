@@ -809,6 +809,34 @@ export const api = {
     return await res.text();
   },
 
+  async exportIncidentPatch(incidentId: string): Promise<{
+    incident_id: string;
+    patch_filename: string;
+    patch_content: string;
+    pr_title: string;
+    pr_body_markdown: string;
+  }> {
+    const res = await fetch(`${API_BASE}/incidents/${incidentId}/export-patch`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to export patch' }));
+      throw new Error(err.detail || 'Failed to export patch');
+    }
+    return await res.json();
+  },
+
+  async downloadIncidentPatchDiff(incidentId: string): Promise<string> {
+    const res = await fetch(`${API_BASE}/incidents/${incidentId}/export-patch.diff`, {
+      headers: getHeaders(),
+    });
+    if (!res.ok) {
+      throw new Error('Failed to download patch diff');
+    }
+    return await res.text();
+  },
+
   // --- Phase 9: Unified Regression Protection ---
   async getProjectTestCases(projectId: string, params?: Record<string, any>): Promise<TestCaseResult[]> {
     try {

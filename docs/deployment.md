@@ -91,6 +91,8 @@ OPENAI_API_KEY=
 GEMINI_API_KEY=
 DEFAULT_LLM_PROVIDER=anthropic         # anthropic | openai | gemini
 DEFAULT_LLM_MODEL=claude-3-5-sonnet-20241022
+LLM_TEMPERATURE=0.2
+LLM_TIMEOUT_SECONDS=30
 
 # Untrusted Execution Sandbox Configuration
 DOCKER_HOST_SOCKET=/var/run/docker.sock
@@ -254,6 +256,35 @@ ENTRYPOINT ["pytest"]
 ### 8.2 Dual-State Verification Worker Capacity
 - Each dual-state verification task spawns two isolated sandbox processes (State A on buggy code and State B on corrected code).
 - In production Kubernetes clusters, dual-state jobs are bound to dedicated runner nodes with ephemeral tmpfs volumes to ensure sub-second startup and teardown.
+
+### 8.3 Production Sentry & Generic Error Webhook Setup
+To automatically intake production exceptions into TestBlind AI:
+1. **Sentry Webhook Integration:**
+   - In Sentry: Navigate to **Settings > Integrations > Webhooks**.
+   - Set the Webhook URL to: `https://api.testblind.ai/api/v1/incidents/webhook/sentry`
+   - Include HTTP Header: `Authorization: Bearer <ORGANIZATION_API_TOKEN>`
+   - Payload format: standard Sentry issue alert payload. TestBlind AI extracts the issue title, stack frames, culprit, and tags, scrubs all credentials and PII, and catalogs the incident under the matching project slug or default tenant project.
+2. **Generic Error Ingestion Webhook:**
+   - Endpoint: `POST https://api.testblind.ai/api/v1/incidents/webhook/generic`
+   - Headers: `Authorization: Bearer <ORGANIZATION_API_TOKEN>`, `Content-Type: application/json`
+   - Body format:
+     ```json
+     {
+       "project_id": "proj-uuid",
+       "title": "Uncaught ValueError in payment flow",
+       "raw_traceback": "Traceback (most recent call last)...",
+       "severity": "P1",
+       "source_file": "src/payments/stripe.py",
+       "line_number": 42
+     }
+     ```
+
+### 8.4 Git Patch & Developer PR Export Operations
+For verified incident reproduction tests:
+- Export unified patch via REST: `POST /api/v1/incidents/{id}/export-patch`
+- Download `.diff` directly: `curl -H "Authorization: Bearer $TOKEN" https://api.testblind.ai/api/v1/incidents/{id}/export-patch.diff -o repro.patch`
+- Apply directly in customer repository: `git apply repro.patch`
+- Open GitHub PR using auto-generated title and markdown body returned by the JSON endpoint.
 
 ---
 
