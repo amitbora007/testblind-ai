@@ -27,6 +27,11 @@ export default {
           highlight: '#475569',
           active: '#60A5FA',
         },
+        brand: {
+          teal: '#14B8A6',
+          'teal-light': '#2DD4BF',
+          'teal-dark': '#0D9488',
+        },
         status: {
           passed: '#10B981',
           failed: '#EF4444',

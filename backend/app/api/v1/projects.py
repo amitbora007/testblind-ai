@@ -148,3 +148,101 @@ async def auto_generate_project_tests(
             detail=f"Auto test generation error: {str(e)}",
         )
 
+
+@router.get("/{project_id}/branches", response_model=List[str])
+async def list_project_branches(
+    project_id: uuid.UUID,
+    tenant: Annotated[TenantContext, Depends(get_tenant_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> List[str]:
+    """
+    Retrieve all verified branches for the project's repository.
+    Ensures branch selectors only show the available branches of the selected repository.
+    """
+    proj_query = select(Project).where(
+        Project.id == project_id,
+        Project.organization_id == tenant.organization_id,
+    )
+    project = (await db.execute(proj_query)).scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    branches: set[str] = set()
+    if project.default_branch:
+        branches.add(project.default_branch)
+
+    # Check connected repositories
+    repo_query = select(Repository).where(
+        Repository.project_id == project.id,
+        Repository.organization_id == tenant.organization_id,
+    )
+    repos = (await db.execute(repo_query)).scalars().all()
+    for r in repos:
+        if r.default_branch:
+            branches.add(r.default_branch)
+
+        # If connected to GitHub, fetch remote branches for this specific repository
+        if r.repo_url and "github.com" in r.repo_url:
+            clean_name = r.repo_url.rstrip("/").split("github.com/")[-1]
+            if "/" in clean_name:
+                owner, repo_name = clean_name.split("/", 1)
+                repo_name = repo_name.replace(".git", "")
+                try:
+                    import httpx
+                    from app.models.audit import IntegrationSetting
+                    int_query = select(IntegrationSetting).where(
+                        IntegrationSetting.organization_id == tenant.organization_id,
+                        IntegrationSetting.provider == "github",
+                        IntegrationSetting.is_enabled == True,
+                    )
+                    setting = (await db.execute(int_query)).scalar_one_or_none()
+                    token = setting.config.get("access_token") if (setting and setting.config) else None
+                    headers = {"Accept": "application/vnd.github.v3+json", "User-Agent": "TestBlind-AI"}
+                    if token:
+                        headers["Authorization"] = f"Bearer {token}"
+                    async with httpx.AsyncClient(timeout=4.0) as client:
+                        resp = await client.get(
+                            f"https://api.github.com/repos/{owner}/{repo_name}/branches?per_page=100",
+                            headers=headers,
+                        )
+                        if resp.status_code == 200:
+                            for b in resp.json():
+                                if "name" in b:
+                                    branches.add(b["name"])
+                except Exception:
+                    pass
+
+    # Include distinct branches from actual execution runs, scan jobs, and test cases for this project
+    from app.models.scan import ScanJob
+    from app.models.run import ExecutionRun
+    from app.models.test import TestCase
+
+    sj_branches = (await db.execute(
+        select(ScanJob.branch).where(ScanJob.project_id == project.id).distinct()
+    )).scalars().all()
+    for b in sj_branches:
+        if b:
+            branches.add(b)
+
+    er_branches = (await db.execute(
+        select(ExecutionRun.branch).where(ExecutionRun.project_id == project.id).distinct()
+    )).scalars().all()
+    for b in er_branches:
+        if b:
+            branches.add(b)
+
+    tc_branches = (await db.execute(
+        select(TestCase.branch).where(TestCase.project_id == project.id).distinct()
+    )).scalars().all()
+    for b in tc_branches:
+        if b:
+            branches.add(b)
+
+    # Sort and guarantee default branch is first
+    branch_list = sorted(list(branches))
+    if project.default_branch in branch_list:
+        branch_list.remove(project.default_branch)
+        branch_list.insert(0, project.default_branch)
+
+    return branch_list or [project.default_branch or "main"]
+

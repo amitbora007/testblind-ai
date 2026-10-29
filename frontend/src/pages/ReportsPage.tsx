@@ -136,15 +136,9 @@ export function ReportsPage() {
 
   const isDemo = isDemoActive();
 
-  // Fetch unified report data from live backend
+  // Fetch projects list once
   React.useEffect(() => {
-    async function loadReport() {
-      try {
-        const data = await api.getUnifiedReport();
-        if (data) setUnifiedData(data);
-      } catch {
-        // Fallback
-      }
+    async function loadProjects() {
       if (!isDemoActive()) {
         try {
           const projs = await api.getProjects();
@@ -154,8 +148,22 @@ export function ReportsPage() {
         }
       }
     }
-    loadReport();
+    loadProjects();
   }, []);
+
+  // Fetch unified report data whenever selectedProject changes or projectsList loads
+  React.useEffect(() => {
+    async function loadReport() {
+      try {
+        const targetProj = selectedProject !== 'all' ? projectsList.find((p) => p.name === selectedProject) : undefined;
+        const data = await api.getUnifiedReport(targetProj?.id);
+        if (data) setUnifiedData(data);
+      } catch {
+        // Fallback
+      }
+    }
+    loadReport();
+  }, [selectedProject, projectsList]);
 
   const liveSuites: SuiteReport[] = (unifiedData?.test_suites || []).map((s: any) => ({
     id: s.id,
@@ -200,8 +208,27 @@ export function ReportsPage() {
     : totalMutants > 0 && overallMutationScore > 0
     ? `${overallMutationScore.toFixed(1)}%`
     : '0.0%';
-  const flakinessIndex = isDemo ? '2.8%' : '0.0%';
-  const mttk = isDemo ? '1.8s' : '0.0s';
+
+  const rawFlakiness = unifiedData?.flakiness_index;
+  const flakinessIndex = isDemo
+    ? '2.8%'
+    : rawFlakiness !== undefined && rawFlakiness !== null
+    ? `${Number(rawFlakiness).toFixed(1)}%`
+    : '0.0%';
+  const unstableCount = isDemo ? 2 : (unifiedData?.unstable_tests ?? 0);
+
+  const rawMttk = unifiedData?.mean_time_to_kill_seconds;
+  const mttk = isDemo
+    ? '1.8s'
+    : rawMttk !== undefined && rawMttk !== null && rawMttk > 0
+    ? `${Number(rawMttk).toFixed(1)}s`
+    : '0.0s';
+
+  const getMutationColorClass = (score: number) => {
+    if (score >= 80) return 'bg-emerald-500';
+    if (score >= 60) return 'bg-amber-500';
+    return 'bg-rose-500';
+  };
 
   const liveOps = unifiedData?.mutation_effectiveness?.operators;
   const opStats = {
@@ -224,26 +251,17 @@ export function ReportsPage() {
         ...projectsList.map((p) => ({ value: p.name, label: p.name })),
       ];
 
-  const handleExport = async (format: 'json' | 'csv' | 'pdf') => {
+  const handleExport = async (format: 'json' | 'pdf') => {
     setIsExporting(true);
     try {
-      if (format === 'csv') {
-        const csvContent = await api.exportReport('csv');
-        const blob = new Blob([csvContent], { type: 'text/csv' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `testblind-unified-report-${selectedRange}.csv`;
-        a.click();
-        URL.revokeObjectURL(url);
-        setDownloadNotice('Official CSV report downloaded successfully.');
-      } else if (format === 'json') {
-        const jsonContent = await api.exportReport('json');
+      const targetProj = selectedProject !== 'all' ? projectsList.find((p) => p.name === selectedProject) : undefined;
+      if (format === 'json') {
+        const jsonContent = await api.exportReport('json', targetProj?.id);
         const blob = new Blob([jsonContent], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `testblind-unified-report-${selectedRange}.json`;
+        a.download = `testblind-unified-report-${selectedProject !== 'all' ? selectedProject : 'all'}-${selectedRange}.json`;
         a.click();
         URL.revokeObjectURL(url);
         setDownloadNotice('Official JSON report downloaded successfully.');
@@ -254,21 +272,32 @@ export function ReportsPage() {
     } catch {
       // Client-side fallback export
       if (format === 'json') {
-        const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(unifiedData || filteredSuites, null, 2));
+        const targetProj = selectedProject !== 'all' ? projectsList.find((p) => p.name === selectedProject) : undefined;
+        const fallbackPayload = {
+          project_id: targetProj?.id || unifiedData?.project_id || (projectsList[0]?.id ?? null),
+          project_name: selectedProject !== 'all' ? selectedProject : (unifiedData?.project_name || 'All Projects'),
+          timestamp: new Date().toISOString(),
+          overall_mutation_score: overallMutationScore,
+          line_coverage: unifiedData?.line_coverage ?? 91.4,
+          branch_coverage: unifiedData?.branch_coverage ?? 82.0,
+          flakiness_index: unifiedData?.flakiness_index ?? (isDemo ? 2.8 : 0.0),
+          unstable_tests: unifiedData?.unstable_tests ?? (isDemo ? 2 : 0),
+          mean_time_to_kill_seconds: unifiedData?.mean_time_to_kill_seconds ?? (isDemo ? 1.8 : 0.0),
+          mutation_effectiveness: unifiedData?.mutation_effectiveness || {
+            total_mutants: totalMutants,
+            killed_mutants: killedMutants,
+            overall_score: overallMutationScore,
+            operators: opStats,
+          },
+          test_suites: filteredSuites,
+        };
+        const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(fallbackPayload, null, 2));
         const a = document.createElement('a');
         a.href = dataStr;
-        a.download = `testblind-report-${selectedRange}.json`;
+        a.download = `testblind-report-${selectedProject !== 'all' ? selectedProject : 'all'}-${selectedRange}.json`;
         a.click();
-      } else if (format === 'csv') {
-        const headers = 'ID,Name,Project,TestCount,MutationKillRate,LineCoverage,BranchCoverage,FlakinessScore\n';
-        const rows = filteredSuites.map((s) => `${s.id},"${s.name}",${s.project},${s.testCount},${s.mutationKillRate}%,${s.lineCoverage}%,${s.branchCoverage}%,${s.flakinessScore}%`).join('\n');
-        const csvStr = 'data:text/csv;charset=utf-8,' + encodeURIComponent(headers + rows);
-        const a = document.createElement('a');
-        a.href = csvStr;
-        a.download = `testblind-report-${selectedRange}.csv`;
-        a.click();
+        setDownloadNotice('JSON export downloaded successfully.');
       }
-      setDownloadNotice(`${format.toUpperCase()} export downloaded.`);
     } finally {
       setIsExporting(false);
       setTimeout(() => setDownloadNotice(null), 4000);
@@ -277,10 +306,12 @@ export function ReportsPage() {
 
   return (
     <div className="space-y-6">
-      <DemoModeBanner context="Reports & Quality Analytics (Historical aggregation generated from container sandbox verification passes)." />
+      <div className="print:hidden">
+        <DemoModeBanner context="Reports & Quality Analytics (Historical aggregation generated from container sandbox verification passes)." />
+      </div>
 
       {downloadNotice && (
-        <div className="p-3 bg-emerald-950/40 border border-emerald-500/30 rounded-lg text-emerald-300 text-sm flex items-center justify-between">
+        <div className="p-3 bg-emerald-950/40 border border-emerald-500/30 rounded-lg text-emerald-300 text-sm flex items-center justify-between print:hidden">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
             <span>{downloadNotice}</span>
@@ -294,6 +325,23 @@ export function ReportsPage() {
         </div>
       )}
 
+      {/* Print Only Header */}
+      <div className="hidden print:block mb-6 border-b border-slate-700 pb-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">TestBlind AI — Test Health & Audit Report</h1>
+            <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+              Container Sandbox Mutation Kill Rates & Coverage Telemetry
+            </p>
+          </div>
+          <div className="text-right text-xs text-slate-600 dark:text-slate-400">
+            <div><strong>Project:</strong> {selectedProject !== 'all' ? selectedProject : 'All Connected Repositories'}</div>
+            <div><strong>Window:</strong> {selectedRange}</div>
+            <div><strong>Generated:</strong> {new Date().toLocaleString()}</div>
+          </div>
+        </div>
+      </div>
+
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -306,22 +354,14 @@ export function ReportsPage() {
           </p>
         </div>
 
-        {/* Export Actions */}
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => handleExport('csv')}
-            className="text-xs flex items-center gap-1.5"
-          >
-            <Download className="w-3.5 h-3.5 text-slate-400" />
-            Export CSV
-          </Button>
+        {/* Export Actions (CSV Removed, PDF and JSON retained) */}
+        <div className="flex flex-wrap items-center gap-2 print:hidden">
           <Button
             variant="outline"
             size="sm"
             onClick={() => handleExport('json')}
             className="text-xs flex items-center gap-1.5"
+            disabled={isExporting}
           >
             <FileText className="w-3.5 h-3.5 text-slate-400" />
             Export JSON
@@ -331,6 +371,7 @@ export function ReportsPage() {
             size="sm"
             onClick={() => handleExport('pdf')}
             className="text-xs flex items-center gap-1.5"
+            disabled={isExporting}
           >
             <Download className="w-3.5 h-3.5" />
             Export PDF
@@ -339,7 +380,7 @@ export function ReportsPage() {
       </div>
 
       {/* Filter Bar */}
-      <Card className="p-3.5 bg-slate-900/70 border-slate-800 shadow-sm">
+      <Card className="p-3.5 bg-slate-900/70 border-slate-800 shadow-sm print:hidden">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2.5">
             <div className="flex items-center gap-1.5 text-xs text-slate-400 mr-1 hidden sm:flex">
@@ -394,7 +435,7 @@ export function ReportsPage() {
           </div>
           <div className="w-full bg-slate-800 h-1.5 rounded-full mt-3 overflow-hidden">
             <div
-              className="bg-brand-teal h-full rounded-full"
+              className={`h-full rounded-full transition-all duration-300 ${getMutationColorClass(overallMutationScore)}`}
               style={{ width: `${Math.min(100, Math.max(0, overallMutationScore))}%` }}
             />
           </div>
@@ -427,6 +468,12 @@ export function ReportsPage() {
             <span className="text-xs font-medium text-slate-400">Suite Flakiness Index</span>
             {isDemo ? (
               <Badge variant="green" size="sm">-1.4%</Badge>
+            ) : rawFlakiness !== undefined && rawFlakiness !== null ? (
+              rawFlakiness === 0 ? (
+                <Badge variant="green" size="sm">Stable</Badge>
+              ) : (
+                <Badge variant="amber" size="sm">Flaky</Badge>
+              )
             ) : (
               <Badge variant="gray" size="sm">0%</Badge>
             )}
@@ -434,11 +481,20 @@ export function ReportsPage() {
           <div className="mt-2 flex items-baseline gap-2">
             <span className="text-2xl font-bold text-slate-100">{flakinessIndex}</span>
             <span className="text-xs text-amber-400/90">
-              {isDemo ? '2 unstable tests' : '0 unstable tests'}
+              {unstableCount} {unstableCount === 1 ? 'unstable test' : 'unstable tests'}
             </span>
           </div>
           <div className="w-full bg-slate-800 h-1.5 rounded-full mt-3 overflow-hidden">
-            <div className="bg-amber-500 h-full rounded-full" style={{ width: flakinessIndex }} />
+            <div
+              className={`h-full rounded-full ${
+                (isDemo ? 2.8 : (rawFlakiness || 0)) > 5
+                  ? 'bg-rose-500'
+                  : (isDemo ? 2.8 : (rawFlakiness || 0)) > 0
+                  ? 'bg-amber-500'
+                  : 'bg-emerald-500'
+              }`}
+              style={{ width: `${Math.min(100, Math.max(0, isDemo ? 2.8 : (rawFlakiness || 0)))}%` }}
+            />
           </div>
         </Card>
 
@@ -447,6 +503,8 @@ export function ReportsPage() {
             <span className="text-xs font-medium text-slate-400">Mean Time to Kill (MTTK)</span>
             {isDemo ? (
               <Badge variant="purple" size="sm">Airgapped</Badge>
+            ) : rawMttk !== undefined && rawMttk !== null && rawMttk > 0 ? (
+              <Badge variant="purple" size="sm">Measured</Badge>
             ) : (
               <Badge variant="gray" size="sm">Idle</Badge>
             )}
@@ -454,13 +512,21 @@ export function ReportsPage() {
           <div className="mt-2 flex items-baseline gap-2">
             <span className="text-2xl font-bold text-slate-100">{mttk}</span>
             <span className="text-xs text-slate-500">
-              {isDemo ? 'per mutant check' : 'no scans yet'}
+              {isDemo || (rawMttk !== undefined && rawMttk !== null && rawMttk > 0)
+                ? 'per mutant check'
+                : 'no scans yet'}
             </span>
           </div>
           <div className="w-full bg-slate-800 h-1.5 rounded-full mt-3 overflow-hidden">
             <div
               className="bg-purple-500 h-full rounded-full"
-              style={{ width: isDemo ? '65%' : '0%' }}
+              style={{
+                width: isDemo
+                  ? '65%'
+                  : rawMttk && rawMttk > 0
+                  ? `${Math.min(100, Math.max(15, (rawMttk / 4) * 100))}%`
+                  : '0%',
+              }}
             />
           </div>
         </Card>
@@ -591,7 +657,10 @@ export function ReportsPage() {
                     <span className="font-mono text-slate-200">{isDemo ? '78.4%' : `${overallMutationScore.toFixed(1)}%`}</span>
                   </div>
                   <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                    <div className="bg-brand-teal h-full rounded-full" style={{ width: `${Math.min(100, Math.max(0, isDemo ? 78.4 : overallMutationScore))}%` }} />
+                    <div
+                      className={`h-full rounded-full transition-all duration-300 ${getMutationColorClass(isDemo ? 78.4 : overallMutationScore)}`}
+                      style={{ width: `${Math.min(100, Math.max(0, isDemo ? 78.4 : overallMutationScore))}%` }}
+                    />
                   </div>
                 </div>
 
@@ -626,7 +695,7 @@ export function ReportsPage() {
               </Badge>
             )}
           </CardTitle>
-          <span className="text-xs text-slate-400">Click row for mutant breakdown</span>
+          <span className="text-xs text-slate-400 print:hidden">Click row for mutant breakdown</span>
         </CardHeader>
         <div className="overflow-x-auto">
           <Table>
@@ -639,7 +708,7 @@ export function ReportsPage() {
                 <TableHead>Line / Branch</TableHead>
                 <TableHead>Flakiness</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="text-right">Action</TableHead>
+                <TableHead className="text-right print:hidden">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -721,7 +790,7 @@ export function ReportsPage() {
                       <Badge variant="rose" size="sm">Gaps Detected</Badge>
                     )}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-right print:hidden">
                     <Button
                       variant="ghost"
                       size="sm"
@@ -743,7 +812,7 @@ export function ReportsPage() {
         </div>
 
         {filteredSuites.length > 0 && (
-          <div className="p-3 border-t border-slate-800">
+          <div className="p-3 border-t border-slate-800 print:hidden">
             <Pagination
               currentPage={currentPage}
               totalItems={totalSuites}

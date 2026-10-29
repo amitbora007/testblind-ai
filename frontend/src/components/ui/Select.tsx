@@ -5,13 +5,15 @@ import { ChevronDown } from 'lucide-react';
 export interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   label?: string;
   error?: string;
+  helperText?: string;
   options?: { value: string; label: string }[];
   containerClassName?: string;
 }
 
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(
-  ({ className, label, error, options, children, id, containerClassName, ...props }, ref) => {
-    const selectId = id || (label ? label.toLowerCase().replace(/\s+/g, '-') : undefined);
+  ({ className, label, error, helperText, options, children, id, containerClassName, ...props }, ref) => {
+    // Sanitize selectId to safe alphanumeric slug
+    const selectId = id || (label ? label.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') : undefined);
 
     // Extract sizing & flex layout classes from className so the outer container matches
     // the intended select width and the chevron icon stays perfectly docked inside.
@@ -58,7 +60,11 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
             <ChevronDown className="w-3.5 h-3.5 opacity-80" />
           </div>
         </div>
-        {error && <p className="text-xs text-red-400">{error}</p>}
+        {error ? (
+          <p className="text-xs text-red-400">{error}</p>
+        ) : helperText ? (
+          <p className="text-[11px] text-slate-400">{helperText}</p>
+        ) : null}
       </div>
     );
   }

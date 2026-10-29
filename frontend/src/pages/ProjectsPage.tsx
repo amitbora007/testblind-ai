@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -180,6 +180,83 @@ export function ProjectsPage({
   const [showPatInput, setShowPatInput] = useState(false);
   const [gitHubAuthError, setGitHubAuthError] = useState<string | null>(null);
   const [isLoadingRepos, setIsLoadingRepos] = useState(false);
+  const [repoBranches, setRepoBranches] = useState<string[]>(["main"]);
+  const [isLoadingBranches, setIsLoadingBranches] = useState(false);
+  const branchesCacheRef = useRef<Record<string, string[]>>({});
+
+  // Load repository branches strictly for the selected repository
+  useEffect(() => {
+    let isCancelled = false;
+    async function loadBranchesForRepo() {
+      const targetRepo = customRepoMode ? customRepoUrl.trim() : selectedRepo;
+      if (!targetRepo) {
+        setRepoBranches(["main"]);
+        return;
+      }
+
+      const cleanPath = targetRepo.replace(/^https?:\/\/github\.com\//, "").replace(/\.git$/, "");
+      const segments = cleanPath.split("/").filter(Boolean);
+      if (segments.length >= 2) {
+        const owner = segments[segments.length - 2];
+        const repo = segments[segments.length - 1];
+        const cacheKey = `${owner}/${repo}`.toLowerCase();
+
+        // If branches for this repo are already in memory, apply immediately without layout churn
+        if (branchesCacheRef.current[cacheKey]) {
+          const cached = branchesCacheRef.current[cacheKey];
+          setRepoBranches(cached);
+          if (!cached.includes(selectedBranch)) {
+            setSelectedBranch(cached[0] || "main");
+          }
+          return;
+        }
+
+        setIsLoadingBranches(true);
+        try {
+          if (isDemoActive()) {
+            let demoBranches = ["main"];
+            if (repo === "payment-ledger" || repo === "payment-ledger-engine") {
+              demoBranches = ["release/v2.1", "main"];
+            } else if (repo === "stream-ingest" || repo === "stream-ingest-worker") {
+              demoBranches = ["develop", "main"];
+            }
+            branchesCacheRef.current[cacheKey] = demoBranches;
+            if (!isCancelled) {
+              setRepoBranches(demoBranches);
+              if (!demoBranches.includes(selectedBranch)) {
+                setSelectedBranch(demoBranches[0]);
+              }
+            }
+          } else {
+            const branchItems = await api.getGitHubBranches(owner, repo);
+            if (!isCancelled) {
+              const branchNames = branchItems.map((b) => b.name).filter(Boolean);
+              const finalBranches = branchNames.length > 0 ? branchNames : ["main"];
+              branchesCacheRef.current[cacheKey] = finalBranches;
+              setRepoBranches(finalBranches);
+              if (!finalBranches.includes(selectedBranch)) {
+                setSelectedBranch(finalBranches[0]);
+              }
+            }
+          }
+        } catch {
+          if (!isCancelled) {
+            setRepoBranches(["main"]);
+            setSelectedBranch("main");
+          }
+        } finally {
+          if (!isCancelled) setIsLoadingBranches(false);
+        }
+      } else {
+        setRepoBranches(["main"]);
+      }
+    }
+
+    loadBranchesForRepo();
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedRepo, customRepoUrl, customRepoMode]);
 
   const refreshRepos = async () => {
     setIsLoadingRepos(true);
@@ -187,11 +264,10 @@ export function ProjectsPage({
       const repos = await api.getGitHubRepos();
       setAvailableRepos(repos);
       if (repos && repos.length > 0) {
-        setSelectedRepo(repos[0].full_name);
-        setSelectedBranch(repos[0].default_branch || "main");
-        if (!projectName) {
-          setProjectName(repos[0].name);
-        }
+        // Preserve user's current selection if valid, instead of clobbering it back to repos[0]
+        setSelectedRepo((prev) => (prev && repos.some((r) => r.full_name === prev) ? prev : repos[0].full_name));
+        setSelectedBranch((prev) => (prev || repos[0].default_branch || "main"));
+        setProjectName((prev) => (prev || repos[0].name));
         setSuccessToast(`Loaded ${repos.length} GitHub repositories.`);
       }
     } catch (err: any) {
@@ -351,6 +427,7 @@ export function ProjectsPage({
 
     // Load GitHub integration status in background
     async function initGithub() {
+      setIsLoadingRepos(true);
       try {
         const status = await api.getGitHubStatus();
         setGithubStatus(status);
@@ -358,12 +435,16 @@ export function ProjectsPage({
           const repos = await api.getGitHubRepos();
           if (repos && repos.length > 0) {
             setAvailableRepos(repos);
-            setSelectedRepo(repos[0].full_name);
-            setSelectedBranch(repos[0].default_branch || "main");
+            // Preserve user's selection if already picked, otherwise default to first
+            setSelectedRepo((prev) => (prev && repos.some((r) => r.full_name === prev) ? prev : repos[0].full_name));
+            setSelectedBranch((prev) => (prev || repos[0].default_branch || "main"));
+            setProjectName((prev) => (prev || repos[0].name));
           }
         }
       } catch {
         // Fallback
+      } finally {
+        setIsLoadingRepos(false);
       }
     }
     initGithub();
@@ -381,7 +462,17 @@ export function ProjectsPage({
       setProjectName(forProject.name);
     } else {
       setTargetUpdateProject(null);
-      setProjectName("");
+      if (availableRepos.length > 0 && !selectedRepo) {
+        setSelectedRepo(availableRepos[0].full_name);
+        setProjectName(availableRepos[0].name);
+        setSelectedBranch(availableRepos[0].default_branch || "main");
+      } else if (!forProject && !projectName && selectedRepo) {
+        const found = availableRepos.find((r) => r.full_name === selectedRepo);
+        if (found) setProjectName(found.name);
+      }
+    }
+    if (githubStatus.connected && availableRepos.length === 0 && !isLoadingRepos) {
+      refreshRepos();
     }
     setIsConnectModalOpen(true);
   };
@@ -1095,23 +1186,29 @@ export function ProjectsPage({
                     />
                   ) : (
                     <Select
+                      id="project-connect-repo-select"
                       label="Select Repository *"
-                      value={selectedRepo}
+                      value={selectedRepo || (availableRepos[0]?.full_name ?? "")}
+                      disabled={isLoadingRepos || (availableRepos.length === 0 && !githubStatus.connected)}
                       onChange={(e) => {
-                        setSelectedRepo(e.target.value);
-                        const chosen = availableRepos.find((r) => r.full_name === e.target.value);
+                        const nextRepo = e.target.value;
+                        if (!nextRepo) return;
+                        setSelectedRepo(nextRepo);
+                        const chosen = availableRepos.find((r) => r.full_name === nextRepo);
                         if (chosen) {
                           setProjectName(chosen.name);
                           setSelectedBranch(chosen.default_branch || "main");
                         } else if (!projectName) {
-                          const parts = e.target.value.split("/");
+                          const parts = nextRepo.split("/");
                           setProjectName(parts[parts.length - 1] || "");
                         }
                       }}
                     >
-                      {availableRepos.length > 0 ? (
+                      {isLoadingRepos ? (
+                        <option value="" disabled>Loading repositories from GitHub API...</option>
+                      ) : availableRepos.length > 0 ? (
                         availableRepos.map((r) => (
-                          <option key={r.id} value={r.full_name}>
+                          <option key={r.full_name || r.id} value={r.full_name}>
                             {r.full_name} {r.description ? `(${r.description})` : ""}
                           </option>
                         ))
@@ -1131,14 +1228,17 @@ export function ProjectsPage({
                   )}
 
                   <Select
+                    id="project-connect-branch-select"
                     label="Target Branch *"
                     value={selectedBranch}
                     onChange={(e) => setSelectedBranch(e.target.value)}
+                    helperText={isLoadingBranches ? "Querying repository branches..." : undefined}
                   >
-                    <option value="main">main (Default)</option>
-                    <option value="develop">develop (Active integration)</option>
-                    <option value="release/v2.1">release/v2.1</option>
-                    <option value="master">master</option>
+                    {repoBranches.map((b) => (
+                      <option key={b} value={b}>
+                        {b}
+                      </option>
+                    ))}
                   </Select>
                 </div>
 

@@ -20,45 +20,20 @@ async def get_reports_summary(
     project_id: Optional[uuid.UUID] = Query(None, description="Optional project ID"),
 ) -> Dict[str, Any]:
     """Retrieve aggregated mutation kill rates, coverage integrity, and flakiness metrics."""
-    mut_query = select(Mutation).where(Mutation.organization_id == tenant.organization_id)
-    if project_id:
-        mut_query = mut_query.join(ScanJob, Mutation.scan_job_id == ScanJob.id).where(
-            ScanJob.project_id == project_id
-        )
-    mutations = (await db.execute(mut_query)).scalars().all()
-
-    total_mutants = len(mutations)
-    killed_mutants = sum(1 for m in mutations if m.status == "killed")
-    effective_total = sum(1 for m in mutations if getattr(m, "is_valid", True) and not getattr(m, "is_equivalent", False))
-    mutation_score = round((killed_mutants / effective_total) * 100, 1) if effective_total > 0 else 0.0
-
-    operators: Dict[str, Dict[str, Any]] = {
-        "ROR": {"total": 0, "killed": 0, "rate": 0.0},
-        "AOR": {"total": 0, "killed": 0, "rate": 0.0},
-        "LCR": {"total": 0, "killed": 0, "rate": 0.0},
-        "BSR": {"total": 0, "killed": 0, "rate": 0.0},
-    }
-    for m in mutations:
-        op_key = m.operator.upper() if m.operator else "ROR"
-        if op_key not in operators:
-            operators[op_key] = {"total": 0, "killed": 0, "rate": 0.0}
-        operators[op_key]["total"] += 1
-        if m.status == "killed":
-            operators[op_key]["killed"] += 1
-
-    for k, v in operators.items():
-        tot = v["total"]
-        kld = v["killed"]
-        v["rate"] = round((kld / tot) * 100, 1) if tot > 0 else 0.0
-
+    unified = await RegressionService.aggregate_unified_report(
+        db=db,
+        organization_id=tenant.organization_id,
+        project_id=project_id,
+    )
     return {
-        "overall_mutation_score": mutation_score,
-        "semantic_code_coverage": mutation_score,
-        "line_coverage": 0.0 if total_mutants == 0 else 91.4,
-        "branch_coverage": 0.0 if total_mutants == 0 else 82.0,
-        "flakiness_index": 0.0,
-        "mean_time_to_kill_seconds": 0.0,
-        "operators": operators,
+        "overall_mutation_score": unified["overall_mutation_score"],
+        "semantic_code_coverage": unified["semantic_code_coverage"],
+        "line_coverage": unified["line_coverage"],
+        "branch_coverage": unified["branch_coverage"],
+        "flakiness_index": unified["flakiness_index"],
+        "unstable_tests": unified.get("unstable_tests", 0),
+        "mean_time_to_kill_seconds": unified["mean_time_to_kill_seconds"],
+        "operators": unified["mutation_effectiveness"]["operators"],
     }
 
 

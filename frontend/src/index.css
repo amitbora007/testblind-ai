@@ -64,3 +64,60 @@
     box-shadow: 0 0 0 2px #0B1120, 0 0 0 4px #3B82F6;
   }
 }
+
+/* Print & PDF Export Styling */
+@media print {
+  *,
+  *::before,
+  *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  html,
+  body,
+  #root,
+  #root > div,
+  main,
+  .overflow-y-auto,
+  .overflow-x-hidden,
+  .overflow-hidden,
+  .h-screen,
+  .h-\[100dvh\] {
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    position: static !important;
+  }
+
+  aside,
+  header,
+  nav,
+  button,
+  .print\:hidden,
+  .demo-banner-container {
+    display: none !important;
+  }
+
+  .card,
+  article,
+  tr,
+  .grid {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  body {
+    background-color: #0B1120 !important;
+    color: #F8FAFC !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  @page {
+    margin: 1.2cm;
+    size: auto;
+  }
+}

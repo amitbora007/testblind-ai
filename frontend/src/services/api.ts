@@ -430,6 +430,34 @@ export const api = {
     }
   },
 
+  async getGitHubBranches(owner: string, repo: string): Promise<Array<{ name: string; commit_sha: string; protected?: boolean }>> {
+    try {
+      const res = await fetch(`${API_BASE}/integrations/github/repos/${owner}/${repo}/branches`, {
+        headers: getHeaders(),
+      });
+      if (!res.ok) {
+        return [{ name: 'main', commit_sha: '' }];
+      }
+      return await res.json();
+    } catch {
+      return [{ name: 'main', commit_sha: '' }];
+    }
+  },
+
+  async getProjectBranches(projectId: string): Promise<string[]> {
+    try {
+      const res = await fetch(`${API_BASE}/projects/${projectId}/branches`, {
+        headers: getHeaders(),
+      });
+      if (!res.ok) {
+        return ['main'];
+      }
+      return await res.json();
+    } catch {
+      return ['main'];
+    }
+  },
+
   async connectGitHub(payload: {
     code?: string;
     token?: string;
@@ -1138,6 +1166,14 @@ export interface UnifiedReportResult {
   generated_at: string;
   organization_id: string;
   project_id?: string | null;
+  project_name?: string | null;
+  overall_mutation_score?: number;
+  semantic_code_coverage?: number;
+  line_coverage?: number;
+  branch_coverage?: number;
+  flakiness_index?: number;
+  unstable_tests?: number;
+  mean_time_to_kill_seconds?: number;
   mutation_effectiveness: {
     overall_score: number;
     total_mutants: number;

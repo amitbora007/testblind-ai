@@ -181,6 +181,34 @@ export function GapDiscoveryPage() {
   const [copiedCode, setCopiedCode] = useState<boolean>(false);
 
   // Initial Data Load
+  const [availableBranches, setAvailableBranches] = useState<string[]>(['main']);
+  const [isLoadingBranches, setIsLoadingBranches] = useState<boolean>(false);
+
+  const fetchBranches = async (projectId: string, defaultBranch?: string) => {
+    setIsLoadingBranches(true);
+    try {
+      const branches = await api.getProjectBranches(projectId);
+      if (branches && branches.length > 0) {
+        setAvailableBranches(branches);
+        if (defaultBranch && branches.includes(defaultBranch)) {
+          setSelectedBranch(defaultBranch);
+        } else if (!branches.includes(selectedBranch)) {
+          setSelectedBranch(branches[0]);
+        }
+      } else {
+        const fallback = defaultBranch ? [defaultBranch] : ['main'];
+        setAvailableBranches(fallback);
+        setSelectedBranch(fallback[0]);
+      }
+    } catch {
+      const fallback = defaultBranch ? [defaultBranch] : ['main'];
+      setAvailableBranches(fallback);
+      setSelectedBranch(fallback[0]);
+    } finally {
+      setIsLoadingBranches(false);
+    }
+  };
+
   useEffect(() => {
     async function loadData() {
       setIsLoading(true);
@@ -191,6 +219,7 @@ export function GapDiscoveryPage() {
           const firstProj = fetchedProjects[0];
           setSelectedProjectId(firstProj.id);
           setSelectedBranch(firstProj.default_branch || 'main');
+          fetchBranches(firstProj.id, firstProj.default_branch);
 
           // Load latest scan job for this project
           const jobs = await api.getProjectScanJobs(firstProj.id);
@@ -225,6 +254,7 @@ export function GapDiscoveryPage() {
     if (proj) {
       setSelectedBranch(proj.default_branch || 'main');
     }
+    fetchBranches(projectId, proj?.default_branch);
     try {
       const jobs = await api.getProjectScanJobs(projectId);
       if (jobs && jobs.length > 0) {
@@ -445,10 +475,13 @@ export function GapDiscoveryPage() {
             value={selectedBranch}
             onChange={(e) => setSelectedBranch(e.target.value)}
             className="w-36 text-xs"
+            disabled={isLoadingBranches}
           >
-            <option value="main">branch: main</option>
-            <option value="develop">branch: develop</option>
-            <option value="staging">branch: staging</option>
+            {availableBranches.map((b) => (
+              <option key={b} value={b}>
+                branch: {b}
+              </option>
+            ))}
           </Select>
 
           <Button
