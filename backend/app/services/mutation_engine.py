@@ -271,7 +271,7 @@ class ASTMutationEngine:
                         )
 
         # Apply heuristic detection for suspected equivalent mutants
-        cls._flag_suspected_equivalent_mutants(mutants)
+        cls._flag_suspected_equivalent_mutants(mutants, tree)
 
         return mutants
 
@@ -298,14 +298,52 @@ class ASTMutationEngine:
             return False
 
     @classmethod
-    def _flag_suspected_equivalent_mutants(cls, mutants: List[MutantSpec]) -> None:
+    def _flag_suspected_equivalent_mutants(cls, mutants: List[MutantSpec], tree: Optional[ast.AST] = None) -> None:
         """
         Heuristically flags mutants that are likely semantically equivalent to original code,
-        such as commutativity changes where behavior cannot differ.
+        such as commutativity changes where behavior cannot differ, or untestable interactive
+        CLI / terminal routines (calls to input, getpass, sys.exit, or __main__ blocks).
         """
+        interactive_lines = set()
+        if tree is not None:
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    is_interactive = False
+                    for child in ast.walk(node):
+                        if isinstance(child, ast.Call):
+                            if isinstance(child.func, ast.Name) and child.func.id in ("input", "raw_input", "getpass", "exit", "quit"):
+                                is_interactive = True
+                                break
+                            if isinstance(child.func, ast.Attribute) and child.func.attr in ("exit", "_exit"):
+                                is_interactive = True
+                                break
+                        elif isinstance(child, ast.Attribute) and child.attr == "stdin":
+                            is_interactive = True
+                            break
+                    if is_interactive:
+                        start_line = node.lineno
+                        end_line = getattr(node, "end_lineno", start_line)
+                        for ln in range(start_line, end_line + 1):
+                            interactive_lines.add(ln)
+
+                elif isinstance(node, ast.If):
+                    try:
+                        test_src = ast.unparse(node.test)
+                        if "__name__" in test_src and "__main__" in test_src:
+                            start_line = node.lineno
+                            end_line = getattr(node, "end_lineno", start_line)
+                            for ln in range(start_line, end_line + 1):
+                                interactive_lines.add(ln)
+                    except Exception:
+                        pass
+
         for m in mutants:
             # Identity operations on boolean constants (e.g. True or False)
             if "if True or False" in m.mutated_snippet or "if False or True" in m.mutated_snippet:
                 m.is_equivalent = True
                 m.status = "equivalent"
                 m.description += " [Suspected Equivalent Mutant]"
+            elif m.line_number in interactive_lines:
+                m.is_equivalent = True
+                m.status = "equivalent"
+                m.description += " [Interactive CLI Routine - Untestable via unit testing]"

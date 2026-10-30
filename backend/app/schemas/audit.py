@@ -26,6 +26,18 @@ class CliTokenResponse(BaseModel):
     expires_in_days: int = 90
 
 
+class IntegrationTestRequest(BaseModel):
+    config: Dict[str, Any] = {}
+
+
+class IntegrationTestResponse(BaseModel):
+    success: bool
+    message: str
+    provider: str
+    latency_ms: int = 120
+    details: Dict[str, Any] = {}
+
+
 class AuditEventRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

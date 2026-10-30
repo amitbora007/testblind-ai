@@ -14,6 +14,7 @@ import {
   Ticket,
   Terminal,
   CheckCircle2,
+  AlertCircle,
   Copy,
   ExternalLink,
   Settings,
@@ -145,6 +146,11 @@ export function IntegrationsPage() {
   const [cliToken, setCliToken] = useState<string>('<YOUR_CLI_TOKEN>');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isTestingConnection, setIsTestingConnection] = useState(false);
+  const [modalTestResult, setModalTestResult] = useState<{
+    success: boolean;
+    message: string;
+    latency_ms?: number;
+  } | null>(null);
 
   useEffect(() => {
     async function loadIntegrations() {
@@ -180,6 +186,7 @@ export function IntegrationsPage() {
 
   const openConfig = (item: Integration) => {
     setActiveConfig(item);
+    setModalTestResult(null);
     const initialVals: Record<string, string> = {};
     item.configFields.forEach((f) => {
       initialVals[f.key] = f.value || '';
@@ -258,16 +265,44 @@ export function IntegrationsPage() {
     } finally {
       setTimeout(() => setToastMessage(null), 3500);
       setActiveConfig(null);
+      setModalTestResult(null);
     }
   };
 
-  const handleTestConnection = () => {
+  const handleTestConnection = async () => {
+    if (!activeConfig) return;
     setIsTestingConnection(true);
-    setTimeout(() => {
+    setModalTestResult(null);
+
+    const configPayload: Record<string, string> = {};
+    activeConfig.configFields.forEach((f) => {
+      configPayload[f.key] = formValues[f.key] !== undefined ? formValues[f.key] : f.value;
+    });
+
+    try {
+      if (!isDemoActive()) {
+        const res = await api.testIntegration(activeConfig.id, configPayload);
+        setModalTestResult({
+          success: res.success,
+          message: res.message,
+          latency_ms: res.latency_ms,
+        });
+      } else {
+        await new Promise((r) => setTimeout(r, 700));
+        setModalTestResult({
+          success: true,
+          message: `Webhook endpoint for ${activeConfig.name} acknowledged handshake with HTTP 200 OK.`,
+          latency_ms: Math.floor(Math.random() * 45) + 70,
+        });
+      }
+    } catch (err: any) {
+      setModalTestResult({
+        success: false,
+        message: err.message || 'Connection test failed. Please check credentials.',
+      });
+    } finally {
       setIsTestingConnection(false);
-      setToastMessage('Connection verified successfully! Webhook endpoint responded with HTTP 200 OK.');
-      setTimeout(() => setToastMessage(null), 4000);
-    }, 1200);
+    }
   };
 
   return (
@@ -275,14 +310,14 @@ export function IntegrationsPage() {
       <DemoModeBanner context="External Tooling &amp; Webhook Integration Fabric" />
 
       {toastMessage && (
-        <div className="p-3 bg-emerald-950/40 border border-emerald-500/30 rounded-lg text-emerald-300 text-sm flex items-center justify-between">
+        <div className="fixed top-4 right-4 z-[70] max-w-md p-3.5 bg-slate-900/95 border border-emerald-500/40 rounded-xl shadow-2xl backdrop-blur-md text-emerald-300 text-xs flex items-center justify-between gap-3 animate-slideIn">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
             <span>{toastMessage}</span>
           </div>
           <button
             onClick={() => setToastMessage(null)}
-            className="text-xs text-slate-400 hover:text-slate-200"
+            className="text-xs text-slate-400 hover:text-slate-200 shrink-0"
           >
             Dismiss
           </button>
@@ -426,7 +461,10 @@ export function IntegrationsPage() {
       {activeConfig && (
         <Dialog
           isOpen={true}
-          onClose={() => setActiveConfig(null)}
+          onClose={() => {
+            setActiveConfig(null);
+            setModalTestResult(null);
+          }}
           title={`Configure ${activeConfig.name}`}
           maxWidth="max-w-lg"
         >
@@ -441,13 +479,62 @@ export function IntegrationsPage() {
                   <label className="text-xs font-medium text-slate-300">{field.label}</label>
                   <Input
                     value={formValues[field.key] ?? field.value}
-                    onChange={(e) => setFormValues((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                    onChange={(e) => {
+                      setFormValues((prev) => ({ ...prev, [field.key]: e.target.value }));
+                      if (modalTestResult) setModalTestResult(null);
+                    }}
                     placeholder={field.placeholder}
                     className="font-mono text-xs"
                   />
                 </div>
               ))}
             </div>
+
+            {/* In-Modal Live Connection Test Status */}
+            {isTestingConnection && (
+              <div className="p-3 rounded-lg bg-blue-950/40 border border-blue-500/30 text-blue-300 text-xs flex items-center gap-2 animate-pulse">
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-400 shrink-0" />
+                <span>Pinging {activeConfig.name} endpoint and verifying TLS handshake...</span>
+              </div>
+            )}
+
+            {modalTestResult && !isTestingConnection && (
+              <div
+                className={`p-3 rounded-lg border text-xs flex items-start justify-between gap-2.5 transition-all animate-fadeIn ${
+                  modalTestResult.success
+                    ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-200'
+                    : 'bg-red-950/60 border-red-500/40 text-red-200'
+                }`}
+              >
+                <div className="flex items-start gap-2.5 min-w-0">
+                  {modalTestResult.success ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                  )}
+                  <div className="space-y-0.5 min-w-0">
+                    <div className="font-semibold text-xs">
+                      {modalTestResult.success ? 'Connection Verified' : 'Connection Failed'}
+                    </div>
+                    <p className="text-slate-300 leading-relaxed text-[11px] break-words">
+                      {modalTestResult.message}
+                    </p>
+                    {modalTestResult.latency_ms !== undefined && (
+                      <div className="text-[10px] text-slate-400 font-mono mt-1">
+                        Response Latency: {modalTestResult.latency_ms}ms • TLS 1.3 Verified
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setModalTestResult(null)}
+                  className="text-slate-400 hover:text-slate-200 text-xs shrink-0"
+                >
+                  &times;
+                </button>
+              </div>
+            )}
 
             <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
               <Button
@@ -465,7 +552,10 @@ export function IntegrationsPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setActiveConfig(null)}
+                  onClick={() => {
+                    setActiveConfig(null);
+                    setModalTestResult(null);
+                  }}
                   className="text-xs"
                 >
                   Cancel

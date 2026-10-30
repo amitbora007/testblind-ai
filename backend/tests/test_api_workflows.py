@@ -239,3 +239,27 @@ async def test_integrations_and_cli_token(client: AsyncClient, tenant_a):
     cli_data = cli_res.json()
     assert cli_data["token"].startswith("tb_runner_")
     assert "curl -fsSL https://get.testblind.ai" in cli_data["install_command"]
+
+    # Test integration connection endpoint (GitHub success)
+    test_res = await client.post(
+        "/api/v1/integrations/github/test",
+        json={"config": {"appId": "5492033", "repos": "locker"}},
+        headers=tenant_a["headers"],
+    )
+    assert test_res.status_code == 200
+    test_data = test_res.json()
+    assert test_data["success"] is True
+    assert "Connected to GitHub App Installation ID 5492033" in test_data["message"]
+    assert test_data["latency_ms"] > 0
+
+    # Test integration connection endpoint (missing credentials)
+    fail_res = await client.post(
+        "/api/v1/integrations/github/test",
+        json={"config": {"appId": ""}},
+        headers=tenant_a["headers"],
+    )
+    assert fail_res.status_code == 200
+    fail_data = fail_res.json()
+    assert fail_data["success"] is False
+    assert "Installation ID is required" in fail_data["message"]
+

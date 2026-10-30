@@ -78,6 +78,38 @@ def test_ast_equivalent_mutant_detection():
             assert m.status == "equivalent"
 
 
+def test_interactive_cli_mutants_flagged_equivalent():
+    cli_code = """import sys
+
+def menu():
+    opt = int(input("Enter choice: "))
+    if opt == 1:
+        pass
+    elif opt == 5:
+        sys.exit()
+
+def pure_calc(x):
+    if x > 10:
+        return x * 2
+    return x
+"""
+    mutants = ASTMutationEngine.generate_mutants_for_source(cli_code)
+    # Mutants inside menu() should be flagged as equivalent (untestable in unit test mode)
+    menu_mutants = [m for m in mutants if "opt == 1" in m.original_snippet]
+    assert len(menu_mutants) > 0
+    for m in menu_mutants:
+        assert m.is_equivalent is True
+        assert m.status == "equivalent"
+        assert "Interactive CLI Routine" in m.description
+
+    # Pure calculation function mutants should NOT be equivalent
+    calc_mutants = [m for m in mutants if "x > 10" in m.original_snippet]
+    assert len(calc_mutants) > 0
+    for m in calc_mutants:
+        assert m.is_equivalent is False
+        assert m.status == "pending"
+
+
 # -----------------------------------------------------------------------------
 # 4. Baseline Test Execution
 # -----------------------------------------------------------------------------

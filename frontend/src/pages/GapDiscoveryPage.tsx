@@ -753,11 +753,21 @@ export function GapDiscoveryPage() {
                       variant="primary"
                       size="sm"
                       isLoading={isPromoting}
-                      className="bg-emerald-600 hover:bg-emerald-500 text-white"
+                      disabled={inspectMutant.verification_status === 'execution_failure'}
+                      className={
+                        inspectMutant.verification_status === 'execution_failure'
+                          ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed opacity-60'
+                          : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                      }
                       leftIcon={<CheckCircle2 className="w-3.5 h-3.5" />}
                       onClick={() => inspectMutant && handlePromote(inspectMutant)}
+                      title={
+                        inspectMutant.verification_status === 'execution_failure'
+                          ? 'Cannot promote: candidate test failed execution validation on baseline code'
+                          : 'Promote to regression test suite'
+                      }
                     >
-                      Promote to Suite
+                      {inspectMutant.verification_status === 'execution_failure' ? 'Validation Failed' : 'Promote to Suite'}
                     </Button>
                   )}
                 </>
@@ -846,6 +856,8 @@ export function GapDiscoveryPage() {
                   <div className="flex items-center gap-2">
                     {inspectMutant.verification_status === 'mutation_killing' ? (
                       <StatusPill status="verified" label="Dual-State Verified Killer" />
+                    ) : inspectMutant.verification_status === 'execution_failure' ? (
+                      <StatusPill status="failed" label="Execution Failed (Gate 1)" />
                     ) : (
                       <StatusPill status="ai_suggested" label="AI Suggestion" />
                     )}
@@ -860,6 +872,15 @@ export function GapDiscoveryPage() {
                     </Button>
                   </div>
                 </div>
+
+                {inspectMutant.verification_status === 'execution_failure' && (
+                  <div className="p-3 rounded-lg bg-red-950/40 border border-red-500/40 text-xs text-red-300 flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                    <span>
+                      <strong>Execution Failure:</strong> This synthesized test raised an exception or failed on pristine unmutated code during Dual-State Gate 1 validation. Promotion is blocked until the test is refined.
+                    </span>
+                  </div>
+                )}
 
                 <pre className="p-3.5 bg-slate-950 rounded-lg border border-purple-500/30 text-purple-200 font-mono text-xs overflow-x-auto leading-relaxed">
                   {inspectMutant.synthesized_test_code}

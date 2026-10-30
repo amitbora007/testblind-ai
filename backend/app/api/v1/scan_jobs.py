@@ -627,6 +627,12 @@ async def promote_mutation_test(
             detail="No synthesized test code available to promote. Synthesize a test first.",
         )
 
+    if mutation.verification_status == "execution_failure":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot promote test: candidate test failed execution validation on baseline code.",
+        )
+
     test_name = data.name or f"test_kill_mutant_{mutation.operator.lower()}_l{mutation.line_number}"
     test_case = TestCase(
         id=uuid.uuid4(),

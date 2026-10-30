@@ -532,6 +532,22 @@ export const api = {
     return await res.json();
   },
 
+  async testIntegration(
+    provider: string,
+    config: Record<string, any> = {}
+  ): Promise<{ success: boolean; message: string; latency_ms?: number }> {
+    const res = await fetch(`${API_BASE}/integrations/${provider}/test`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ config }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to test integration connection' }));
+      throw new Error(err.detail || 'Failed to test integration connection');
+    }
+    return await res.json();
+  },
+
   async generateCliToken(): Promise<{ token: string; install_command: string; expires_in_days: number }> {
     const res = await fetch(`${API_BASE}/integrations/cli-token`, {
       method: 'POST',
