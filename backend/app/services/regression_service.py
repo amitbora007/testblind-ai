@@ -159,6 +159,10 @@ os.get_terminal_size = _safe_get_terminal_size
 def _mock_input(prompt=""):
     return "5"
 builtins.input = _mock_input
+
+def _safe_exit(code=0):
+    pass
+sys.exit = _safe_exit
 '''
         files = {
             rel_test_path: code_to_run,
