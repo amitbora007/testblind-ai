@@ -1082,9 +1082,12 @@ export const api = {
     return await res.text();
   },
 
-  async getAiInsights(projectId?: string): Promise<AiInsightItem[]> {
+  async getAiInsights(projectId?: string, demo?: boolean): Promise<AiInsightItem[]> {
     try {
-      const qs = projectId ? `?project_id=${projectId}` : '';
+      const params = new URLSearchParams();
+      if (projectId) params.append('project_id', projectId);
+      if (demo !== undefined) params.append('demo', String(demo));
+      const qs = params.toString() ? `?${params.toString()}` : '';
       const res = await fetch(`${API_BASE}/ai-insights${qs}`, { headers: getHeaders() });
       if (!res.ok) return [];
       return await res.json();

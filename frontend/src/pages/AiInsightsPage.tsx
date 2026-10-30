@@ -6,7 +6,7 @@ import { Select } from '@/components/ui/Select';
 import { Dialog } from '@/components/ui/Dialog';
 import { Pagination } from '@/components/ui/Pagination';
 import { DemoModeBanner } from '@/components/common/DemoModeBanner';
-import { api, isDemoActive, AiInsightItem } from '@/services/api';
+import { api, isDemoActive, AiInsightItem, ProjectResult } from '@/services/api';
 import {
   Sparkles,
   AlertTriangle,
@@ -149,32 +149,60 @@ const mapBackendInsight = (b: AiInsightItem): InsightItem => {
 };
 
 export function AiInsightsPage() {
+  const isDemo = isDemoActive();
   const [insights, setInsights] = useState<InsightItem[]>(() => isDemoActive() ? MOCK_INSIGHTS : []);
+  const [projectsList, setProjectsList] = useState<ProjectResult[]>([]);
+  const [selectedProject, setSelectedProject] = useState<string>('all');
   const [selectedType, setSelectedType] = useState<string>('all');
   const [selectedSeverity, setSelectedSeverity] = useState<string>('all');
   const [inspectItem, setInspectItem] = useState<InsightItem | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
   useEffect(() => {
-    if (!isDemoActive()) {
-      api.getAiInsights().then((items) => {
-        if (items && items.length > 0) {
+    if (isDemoActive()) {
+      setInsights(MOCK_INSIGHTS);
+      return;
+    }
+
+    // Load available projects for authenticated tenant
+    api.getProjects().then((projs) => {
+      setProjectsList(projs || []);
+    }).catch(() => {
+      setProjectsList([]);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (isDemoActive()) {
+      setInsights(MOCK_INSIGHTS);
+      return;
+    }
+
+    setIsLoading(true);
+    const projId = selectedProject !== 'all' ? selectedProject : undefined;
+    api.getAiInsights(projId, false)
+      .then((items) => {
+        if (items && Array.isArray(items)) {
           setInsights(items.map(mapBackendInsight));
         } else {
-          setInsights(isDemoActive() ? MOCK_INSIGHTS : []);
+          setInsights([]);
         }
-      }).catch(() => {
-        setInsights(isDemoActive() ? MOCK_INSIGHTS : []);
+      })
+      .catch(() => {
+        setInsights([]);
+      })
+      .finally(() => {
+        setIsLoading(false);
       });
-    }
-  }, []);
+  }, [selectedProject]);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(3);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedType, selectedSeverity]);
+  }, [selectedType, selectedSeverity, selectedProject]);
 
   const filteredInsights = insights.filter((item) => {
     const matchesType = selectedType === 'all' || item.type === selectedType;
@@ -246,6 +274,23 @@ export function AiInsightsPage() {
       <Card className="p-3.5 bg-slate-900/70 border-slate-800 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2.5">
+            {projectsList.length > 0 && (
+              <>
+                <div className="flex items-center gap-1.5 text-xs text-slate-400 mr-1 hidden sm:flex">
+                  <span>Project:</span>
+                </div>
+                <Select
+                  value={selectedProject}
+                  onChange={(e) => setSelectedProject(e.target.value)}
+                  className="w-44 text-xs"
+                  options={[
+                    { value: 'all', label: 'All Projects' },
+                    ...projectsList.map((p) => ({ value: p.id, label: p.name })),
+                  ]}
+                />
+              </>
+            )}
+
             <div className="flex items-center gap-1.5 text-xs text-slate-400 mr-1 hidden sm:flex">
               <Filter className="w-3.5 h-3.5 text-slate-400" />
               <span>Category:</span>
@@ -277,13 +322,14 @@ export function AiInsightsPage() {
               ]}
             />
 
-            {(selectedType !== 'all' || selectedSeverity !== 'all') && (
+            {(selectedType !== 'all' || selectedSeverity !== 'all' || selectedProject !== 'all') && (
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => {
                   setSelectedType('all');
                   setSelectedSeverity('all');
+                  setSelectedProject('all');
                 }}
                 className="text-xs text-slate-400 hover:text-white px-2 py-1 h-auto"
               >
@@ -311,7 +357,13 @@ export function AiInsightsPage() {
 
       {/* Insights List */}
       <div className="space-y-4">
-        {filteredInsights.length === 0 ? (
+        {isLoading ? (
+          <Card className="p-12 text-center bg-slate-900/40 border-slate-800">
+            <RefreshCw className="w-8 h-8 text-cyan-400 mx-auto mb-3 animate-spin" />
+            <h3 className="text-base font-medium text-slate-200">Loading AI Insights...</h3>
+            <p className="text-xs text-slate-400 mt-1">Analyzing empirical sandbox traces and mutation survivor graphs.</p>
+          </Card>
+        ) : filteredInsights.length === 0 ? (
           <Card className="p-12 text-center bg-slate-900/40 border-slate-800">
             {isDemoActive() ? (
               <>
