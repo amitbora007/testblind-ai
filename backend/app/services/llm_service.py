@@ -217,7 +217,7 @@ class LLMTestSynthesizer:
         (Anthropic / OpenAI / Gemini) if API keys are set; falls back to local AST synthesizer.
         """
         provider = (settings.DEFAULT_LLM_PROVIDER or "local").lower().strip()
-
+        gemini_key = settings.GEMINI_API_KEY or os.environ.get("GEMINI_API_KEY")
         try:
             if provider == "anthropic" and settings.ANTHROPIC_API_KEY:
                 test_code = await cls._synthesize_anthropic(source_code, mutant, module_name)
@@ -229,7 +229,7 @@ class LLMTestSynthesizer:
                 is_valid, _ = ASTAssertionAuditor.audit_test_code(test_code)
                 if is_valid:
                     return test_code
-            elif provider == "gemini" and settings.GEMINI_API_KEY:
+            elif (provider == "gemini" or gemini_key) and gemini_key:
                 test_code = await cls._synthesize_gemini(source_code, mutant, module_name)
                 is_valid, _ = ASTAssertionAuditor.audit_test_code(test_code)
                 if is_valid:
@@ -408,8 +408,9 @@ class LLMTestSynthesizer:
 
     @classmethod
     async def _synthesize_gemini(cls, source_code: str, mutant: MutantSpec, module_name: str) -> str:
-        model = settings.DEFAULT_LLM_MODEL or "gemini-1.5-pro"
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.GEMINI_API_KEY}"
+        model = settings.DEFAULT_LLM_MODEL or "gemini-2.5-flash"
+        api_key = settings.GEMINI_API_KEY or os.environ.get("GEMINI_API_KEY")
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
         user_prompt = (
             f"You are a Principal Software Verification Engineer. Synthesize an executable pytest test case "
             f"that kills this surviving mutant. Output ONLY Python code inside ```python ```.\n"

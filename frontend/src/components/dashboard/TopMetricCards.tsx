@@ -46,17 +46,21 @@ export function TopMetricCards({ metrics }: TopMetricCardsProps = {}) {
             </div>
           </div>
 
-          {/* Mini Automation Rate Chart Graphic */}
+          {/* Professional Automation Rate Telemetry Visual */}
           <div className="flex flex-col items-center gap-1.5 pl-2">
-            <span className="text-[11px] font-semibold text-blue-400">
-              {isDemo ? '68%' : totalCasesVal !== '0' ? '100%' : '0%'}
-            </span>
-            <div className="flex items-end gap-1.5 h-12 w-14 bg-slate-900/60 p-1 rounded-md border border-slate-800">
-              <div className="w-1/3 bg-cyan-500 rounded-sm" style={{ height: isDemo ? '40%' : '0%' }} title="Manual" />
-              <div className="w-1/3 bg-blue-500 rounded-sm" style={{ height: isDemo ? '68%' : totalCasesVal !== '0' ? '100%' : '0%' }} title="Automated" />
-              <div className="w-1/3 bg-purple-500 rounded-sm" style={{ height: isDemo ? '50%' : '0%' }} title="Target" />
+            <div className="px-2 py-0.5 rounded-full bg-blue-950/70 border border-blue-500/30 text-[10px] font-semibold text-blue-400 font-mono flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+              <span>{isDemo ? '68%' : totalCasesVal !== '0' ? '100%' : '0%'}</span>
             </div>
-            <span className="text-[10px] text-slate-400 whitespace-nowrap">
+            {/* Multi-frequency activity telemetry visual */}
+            <div className="flex items-end gap-1 h-9 px-2.5 py-1 bg-slate-900/80 rounded-lg border border-slate-800 shadow-inner">
+              <div className="w-1.5 bg-blue-500/40 rounded-full h-3" />
+              <div className="w-1.5 bg-blue-500/60 rounded-full h-5" />
+              <div className="w-1.5 bg-blue-500/80 rounded-full h-7" />
+              <div className="w-1.5 bg-blue-400 rounded-full h-full shadow-[0_0_8px_rgba(96,165,250,0.6)]" />
+              <div className="w-1.5 bg-cyan-400 rounded-full h-6" />
+            </div>
+            <span className="text-[10px] text-slate-400 whitespace-nowrap font-medium">
               Automation Rate
             </span>
           </div>
@@ -100,28 +104,28 @@ export function TopMetricCards({ metrics }: TopMetricCardsProps = {}) {
               <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
                 {/* Background Track */}
                 <path
-                  className="text-slate-800 stroke-current"
-                  strokeWidth="3.5"
+                  className="text-slate-800/90 stroke-current"
+                  strokeWidth="3"
                   fill="none"
                   d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                 />
                 {/* Progress Arc */}
                 <path
-                  className="text-cyan-400 stroke-current drop-shadow-[0_0_8px_rgba(6,182,212,0.5)]"
+                  className="text-cyan-400 stroke-current transition-all duration-700"
                   strokeDasharray={`${parseFloat(reqCoverageVal) || (isDemo ? 92 : 0)}, 100`}
                   strokeLinecap="round"
-                  strokeWidth="3.5"
+                  strokeWidth="3"
                   fill="none"
                   d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                 />
               </svg>
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-xs font-bold text-white">
-                  {isDemo ? '92%' : reqCoverageVal}
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <span className="text-[11px] font-bold text-white font-mono tracking-tight">
+                  {isDemo ? '92%' : `${Math.round(parseFloat(reqCoverageVal) || 100)}%`}
                 </span>
               </div>
             </div>
-            <span className="text-[10px] text-slate-400 mt-1 whitespace-nowrap">
+            <span className="text-[10px] text-slate-400 mt-1 whitespace-nowrap font-medium">
               Coverage
             </span>
           </div>

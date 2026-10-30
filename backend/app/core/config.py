@@ -35,7 +35,7 @@ class Settings(BaseSettings):
 
     # LLM Synthesis Providers & Models
     DEFAULT_LLM_PROVIDER: str = "local"  # "local" | "anthropic" | "openai" | "gemini"
-    DEFAULT_LLM_MODEL: Union[str, None] = None
+    DEFAULT_LLM_MODEL: Union[str, None] = "gemini-2.5-flash"
     ANTHROPIC_API_KEY: Union[str, None] = None
     OPENAI_API_KEY: Union[str, None] = None
     GEMINI_API_KEY: Union[str, None] = None
