@@ -627,11 +627,14 @@ async def promote_mutation_test(
             detail="No synthesized test code available to promote. Synthesize a test first.",
         )
 
-    if mutation.verification_status == "execution_failure":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot promote test: candidate test failed execution validation on baseline code.",
-        )
+    is_failed_verification = mutation.verification_status == "execution_failure"
+    case_status = "unverified" if is_failed_verification else "verified"
+    kill_count = 0 if is_failed_verification else 1
+    msg = (
+        "Test promoted as unverified draft due to baseline validation errors."
+        if is_failed_verification
+        else "Synthesized test promoted to regression test suite."
+    )
 
     test_name = data.name or f"test_kill_mutant_{mutation.operator.lower()}_l{mutation.line_number}"
     test_case = TestCase(
@@ -643,8 +646,8 @@ async def promote_mutation_test(
         function_name=test_name,
         framework="pytest",
         code=test_code,
-        status="verified",
-        mutation_kill_count=1,
+        status=case_status,
+        mutation_kill_count=kill_count,
         is_flaky=False,
     )
     db.add(test_case)
@@ -657,5 +660,5 @@ async def promote_mutation_test(
         file_path=test_case.file_path,
         status=test_case.status,
         mutation_kill_count=test_case.mutation_kill_count,
-        message="Synthesized test promoted to regression test suite.",
+        message=msg,
     )

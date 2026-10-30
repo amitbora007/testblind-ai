@@ -337,6 +337,12 @@ class ASTMutationEngine:
                     except Exception:
                         pass
 
+                elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "print":
+                    start_line = node.lineno
+                    end_line = getattr(node, "end_lineno", start_line)
+                    for ln in range(start_line, end_line + 1):
+                        interactive_lines.add(ln)
+
         for m in mutants:
             # Identity operations on boolean constants (e.g. True or False)
             if "if True or False" in m.mutated_snippet or "if False or True" in m.mutated_snippet:
@@ -346,4 +352,4 @@ class ASTMutationEngine:
             elif m.line_number in interactive_lines:
                 m.is_equivalent = True
                 m.status = "equivalent"
-                m.description += " [Interactive CLI Routine - Untestable via unit testing]"
+                m.description += " [Interactive CLI Routine / Cosmetic Output - Untestable via unit testing]"

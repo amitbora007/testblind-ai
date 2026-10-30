@@ -1,11 +1,14 @@
 import secrets
+import time
 from datetime import datetime, timezone
 from typing import Annotated, List
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import TenantContext, get_tenant_context, require_role
+from app.core.config import settings
 from app.core.database import get_db
 from app.models.audit import IntegrationSetting
 from app.models.user import RoleEnum
@@ -165,6 +168,47 @@ async def test_integration_connection(
             latency_ms=115,
             details={"instance_url": instance_url},
         )
+
+    elif prov in ("gemini", "google", "llm"):
+        api_key = str(cfg.get("apiKey") or cfg.get("api_key") or settings.GEMINI_API_KEY or "").strip()
+        model = str(cfg.get("model") or settings.DEFAULT_LLM_MODEL or "gemini-2.5-flash").strip()
+        if not api_key:
+            return IntegrationTestResponse(
+                success=False,
+                message="Google Gemini API Key is required to test inference connectivity.",
+                provider=prov,
+                latency_ms=25,
+            )
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+        payload = {"contents": [{"parts": [{"text": "Respond with OK"}]}]}
+        t0 = time.time()
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                res = await client.post(url, json=payload)
+                latency = int((time.time() - t0) * 1000)
+                if res.status_code == 200:
+                    return IntegrationTestResponse(
+                        success=True,
+                        message=f"Connected to Google Gemini ({model}). Model inference verified with HTTP 200 OK.",
+                        provider=prov,
+                        latency_ms=latency,
+                        details={"model": model, "status": "active"},
+                    )
+                else:
+                    return IntegrationTestResponse(
+                        success=False,
+                        message=f"Google Gemini ({model}) returned HTTP {res.status_code}: {res.text[:140]}",
+                        provider=prov,
+                        latency_ms=latency,
+                    )
+        except Exception as e:
+            latency = int((time.time() - t0) * 1000)
+            return IntegrationTestResponse(
+                success=False,
+                message=f"Gemini connection test failed: {e}",
+                provider=prov,
+                latency_ms=latency,
+            )
 
     else:
         return IntegrationTestResponse(
