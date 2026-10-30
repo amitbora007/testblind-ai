@@ -158,10 +158,13 @@ export function AiInsightsPage() {
   useEffect(() => {
     if (!isDemoActive()) {
       api.getAiInsights().then((items) => {
-        const realItems = (items || []).filter((i) => !i.id.startsWith('INS-'));
-        setInsights(realItems.map(mapBackendInsight));
+        if (items && items.length > 0) {
+          setInsights(items.map(mapBackendInsight));
+        } else {
+          setInsights(isDemoActive() ? MOCK_INSIGHTS : []);
+        }
       }).catch(() => {
-        setInsights([]);
+        setInsights(isDemoActive() ? MOCK_INSIGHTS : []);
       });
     }
   }, []);

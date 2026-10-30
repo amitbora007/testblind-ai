@@ -506,6 +506,44 @@ export const api = {
     return await res.json();
   },
 
+  async getIntegrations(): Promise<any[]> {
+    try {
+      const res = await fetch(`${API_BASE}/integrations`, { headers: getHeaders() });
+      if (!res.ok) return [];
+      return await res.json();
+    } catch {
+      return [];
+    }
+  },
+
+  async updateIntegration(
+    provider: string,
+    data: { config?: Record<string, any>; is_enabled?: boolean }
+  ): Promise<any> {
+    const res = await fetch(`${API_BASE}/integrations/${provider}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to update integration' }));
+      throw new Error(err.detail || 'Failed to update integration');
+    }
+    return await res.json();
+  },
+
+  async generateCliToken(): Promise<{ token: string; install_command: string; expires_in_days: number }> {
+    const res = await fetch(`${API_BASE}/integrations/cli-token`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to generate CLI runner token' }));
+      throw new Error(err.detail || 'Failed to generate CLI runner token');
+    }
+    return await res.json();
+  },
+
   // Repository ZIP Upload
   async uploadRepositoryZip(projectId: string, file: File, autoGenerateIfNoTests = true): Promise<ZipUploadResult> {
     const formData = new FormData();
@@ -974,6 +1012,34 @@ export const api = {
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: 'Failed to create scenario' }));
       throw new Error(err.detail || 'Failed to create scenario');
+    }
+    return await res.json();
+  },
+
+  async runProjectTestScenario(projectId: string, scenarioId: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/test-scenarios/${scenarioId}/run`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to run scenario' }));
+      throw new Error(err.detail || 'Failed to run scenario');
+    }
+    return await res.json();
+  },
+
+  async triggerExecutionRun(
+    projectId: string,
+    data: { trigger?: string; trigger_label?: string; branch?: string; test_command?: string; timeout_seconds?: number }
+  ): Promise<ExecutionRunResult> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/execution-runs`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to trigger execution run' }));
+      throw new Error(err.detail || 'Failed to trigger execution run');
     }
     return await res.json();
   },

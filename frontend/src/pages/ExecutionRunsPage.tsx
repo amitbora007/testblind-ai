@@ -38,6 +38,7 @@ export function ExecutionRunsPage() {
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [runs, setRuns] = useState<ExecutionRunResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isTriggering, setIsTriggering] = useState(false);
   const [isLiveBackend, setIsLiveBackend] = useState(false);
 
   // Filters & Pagination
@@ -129,6 +130,23 @@ export function ExecutionRunsPage() {
     }
   };
 
+  const handleTriggerRun = async () => {
+    if (!selectedProjectId) return;
+    setIsTriggering(true);
+    try {
+      await api.triggerExecutionRun(selectedProjectId, {
+        trigger: 'manual',
+        trigger_label: 'Manual Console Trigger',
+        branch: 'main',
+      });
+      await fetchRuns();
+    } catch (err) {
+      console.error('Failed to trigger execution run:', err);
+    } finally {
+      setIsTriggering(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {!isLiveBackend ? (
@@ -180,6 +198,17 @@ export function ExecutionRunsPage() {
             onClick={fetchRuns}
           >
             Refresh
+          </Button>
+
+          <Button
+            variant="primary"
+            size="sm"
+            isLoading={isTriggering}
+            leftIcon={<PlayCircle className="w-3.5 h-3.5" />}
+            onClick={handleTriggerRun}
+            disabled={!selectedProjectId}
+          >
+            Trigger Run
           </Button>
         </div>
       </div>

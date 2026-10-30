@@ -426,10 +426,15 @@ class AutoMock(types.ModuleType):
         return MagicMock()
 
 class AutoMockFinder:
+    _finding = set()
+
     @classmethod
     def find_spec(cls, fullname, path=None, target=None):
         if fullname.startswith("pytest") or fullname.startswith("_pytest") or fullname in sys.builtin_module_names:
             return None
+        if fullname in cls._finding:
+            return None
+        cls._finding.add(fullname)
         try:
             import importlib.util
             spec = importlib.util.find_spec(fullname)
@@ -437,6 +442,8 @@ class AutoMockFinder:
                 return None
         except Exception:
             pass
+        finally:
+            cls._finding.discard(fullname)
         return ModuleSpec(fullname, cls)
 
     @classmethod

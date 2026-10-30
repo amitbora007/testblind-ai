@@ -867,15 +867,25 @@ export function ReportsPage() {
                       <div className="flex justify-between text-xs mb-1">
                         <span className="font-mono text-cyan-300 uppercase">{op} Mutants</span>
                         <span className="text-slate-300">
-                          {data.killed} / {data.total} killed ({rate}%)
+                          {data.total > 0 ? (
+                            `${data.killed} / ${data.total} killed (${rate}%)`
+                          ) : (
+                            <span className="text-slate-500">0 / 0 killed (0%)</span>
+                          )}
                         </span>
                       </div>
-                      <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                      <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
                         <div
-                          className={`h-full rounded-full ${
-                            rate >= 80 ? 'bg-emerald-500' : rate >= 60 ? 'bg-amber-500' : 'bg-rose-500'
+                          className={`h-full rounded-full transition-all duration-300 ${
+                            data.total === 0
+                              ? 'bg-slate-700/50'
+                              : rate >= 80
+                              ? 'bg-emerald-500'
+                              : rate >= 60
+                              ? 'bg-amber-500'
+                              : 'bg-rose-500'
                           }`}
-                          style={{ width: `${rate}%` }}
+                          style={{ width: `${data.total === 0 ? 0 : rate}%` }}
                         />
                       </div>
                     </div>

@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { Dialog } from '@/components/ui/Dialog';
 import { DemoModeBanner } from '@/components/common/DemoModeBanner';
-import { isDemoActive } from '@/services/api';
+import { api, isDemoActive } from '@/services/api';
 import {
   Plug,
   Github,
@@ -141,19 +141,73 @@ const AUTH_INTEGRATIONS: Integration[] = [
 export function IntegrationsPage() {
   const [integrations, setIntegrations] = useState<Integration[]>(() => isDemoActive() ? INITIAL_INTEGRATIONS : AUTH_INTEGRATIONS);
   const [activeConfig, setActiveConfig] = useState<Integration | null>(null);
+  const [formValues, setFormValues] = useState<Record<string, string>>({});
   const [cliToken, setCliToken] = useState<string>('<YOUR_CLI_TOKEN>');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isTestingConnection, setIsTestingConnection] = useState(false);
 
-  const handleGenerateToken = () => {
-    const randomHex = Array.from({ length: 24 }, () =>
-      Math.floor(Math.random() * 16).toString(16)
-    ).join('');
-    const newToken = `tb_runner_${randomHex}`;
-    setCliToken(newToken);
-    navigator.clipboard.writeText(newToken);
-    setToastMessage('New CLI runner token generated and copied to clipboard.');
-    setTimeout(() => setToastMessage(null), 4000);
+  useEffect(() => {
+    async function loadIntegrations() {
+      if (isDemoActive()) return;
+      try {
+        const remote = await api.getIntegrations();
+        if (remote && Array.isArray(remote) && remote.length > 0) {
+          setIntegrations((prev) =>
+            prev.map((item) => {
+              const found = remote.find((r) => r.provider.toLowerCase() === item.id.toLowerCase());
+              if (found) {
+                const updatedFields = item.configFields.map((f) => ({
+                  ...f,
+                  value: (found.config && found.config[f.key] !== undefined) ? String(found.config[f.key]) : f.value,
+                }));
+                return {
+                  ...item,
+                  status: found.is_enabled ? 'connected' : 'disconnected',
+                  lastSync: found.last_sync_at ? new Date(found.last_sync_at).toLocaleTimeString() : undefined,
+                  configFields: updatedFields,
+                };
+              }
+              return item;
+            })
+          );
+        }
+      } catch (err) {
+        console.error('Failed to load integrations:', err);
+      }
+    }
+    loadIntegrations();
+  }, []);
+
+  const openConfig = (item: Integration) => {
+    setActiveConfig(item);
+    const initialVals: Record<string, string> = {};
+    item.configFields.forEach((f) => {
+      initialVals[f.key] = f.value || '';
+    });
+    setFormValues(initialVals);
+  };
+
+  const handleGenerateToken = async () => {
+    try {
+      if (!isDemoActive()) {
+        const res = await api.generateCliToken();
+        setCliToken(res.token);
+        navigator.clipboard.writeText(res.token);
+        setToastMessage('New CLI runner token generated and copied to clipboard.');
+      } else {
+        const randomHex = Array.from({ length: 24 }, () =>
+          Math.floor(Math.random() * 16).toString(16)
+        ).join('');
+        const newToken = `tb_runner_${randomHex}`;
+        setCliToken(newToken);
+        navigator.clipboard.writeText(newToken);
+        setToastMessage('New CLI runner token generated and copied to clipboard.');
+      }
+    } catch (err: any) {
+      setToastMessage(`Failed to generate CLI token: ${err.message || 'Error'}`);
+    } finally {
+      setTimeout(() => setToastMessage(null), 4000);
+    }
   };
 
   const handleCopyCliInstall = () => {
@@ -163,23 +217,48 @@ export function IntegrationsPage() {
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  const handleToggleConnection = (id: string) => {
-    setIntegrations((prev) =>
-      prev.map((item) => {
-        if (item.id === id) {
-          const newStatus = item.status === 'connected' ? 'disconnected' : 'connected';
-          return {
-            ...item,
-            status: newStatus,
-            lastSync: newStatus === 'connected' ? 'Just now' : undefined,
-          };
-        }
-        return item;
-      })
-    );
-    setToastMessage('Integration status updated.');
-    setTimeout(() => setToastMessage(null), 3000);
-    setActiveConfig(null);
+  const handleToggleConnection = async (id: string, customConfig?: Record<string, string>) => {
+    const target = integrations.find((i) => i.id === id);
+    if (!target) return;
+    const isEnabling = target.status !== 'connected' || Boolean(customConfig);
+    const newStatus = isEnabling ? 'connected' : 'disconnected';
+
+    const configPayload: Record<string, string> = {};
+    target.configFields.forEach((f) => {
+      configPayload[f.key] = customConfig?.[f.key] !== undefined ? customConfig[f.key] : f.value;
+    });
+
+    try {
+      if (!isDemoActive()) {
+        await api.updateIntegration(id, {
+          config: configPayload,
+          is_enabled: isEnabling,
+        });
+      }
+      setIntegrations((prev) =>
+        prev.map((item) => {
+          if (item.id === id) {
+            const updatedFields = item.configFields.map((f) => ({
+              ...f,
+              value: configPayload[f.key] !== undefined ? configPayload[f.key] : f.value,
+            }));
+            return {
+              ...item,
+              status: newStatus,
+              lastSync: isEnabling ? 'Just now' : undefined,
+              configFields: updatedFields,
+            };
+          }
+          return item;
+        })
+      );
+      setToastMessage(isEnabling ? `Successfully connected to ${target.name}.` : `Disconnected ${target.name}.`);
+    } catch (err: any) {
+      setToastMessage(`Failed to update integration: ${err.message || 'Error'}`);
+    } finally {
+      setTimeout(() => setToastMessage(null), 3500);
+      setActiveConfig(null);
+    }
   };
 
   const handleTestConnection = () => {
@@ -314,7 +393,7 @@ export function IntegrationsPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setActiveConfig(item)}
+                onClick={() => openConfig(item)}
                 className="text-xs flex items-center gap-1.5"
               >
                 <Settings className="w-3.5 h-3.5 text-slate-400" />
@@ -324,7 +403,16 @@ export function IntegrationsPage() {
               <Button
                 variant={item.status === 'connected' ? 'outline' : 'primary'}
                 size="sm"
-                onClick={() => handleToggleConnection(item.id)}
+                onClick={() => {
+                  if (item.status === 'disconnected') {
+                    const hasConfig = item.configFields.some((f) => f.value && f.value.trim().length > 0);
+                    if (!hasConfig) {
+                      openConfig(item);
+                      return;
+                    }
+                  }
+                  handleToggleConnection(item.id);
+                }}
                 className="text-xs"
               >
                 {item.status === 'connected' ? 'Disconnect' : 'Connect'}
@@ -352,7 +440,8 @@ export function IntegrationsPage() {
                 <div key={field.key} className="space-y-1">
                   <label className="text-xs font-medium text-slate-300">{field.label}</label>
                   <Input
-                    defaultValue={field.value}
+                    value={formValues[field.key] ?? field.value}
+                    onChange={(e) => setFormValues((prev) => ({ ...prev, [field.key]: e.target.value }))}
                     placeholder={field.placeholder}
                     className="font-mono text-xs"
                   />
@@ -385,11 +474,11 @@ export function IntegrationsPage() {
                   variant="primary"
                   size="sm"
                   onClick={() => {
-                    handleToggleConnection(activeConfig.id);
+                    handleToggleConnection(activeConfig.id, formValues);
                   }}
                   className="text-xs"
                 >
-                  Save Settings
+                  Save Settings & Connect
                 </Button>
               </div>
             </div>

@@ -35,10 +35,10 @@ async def list_integrations(
 async def update_integration(
     provider: str,
     data: IntegrationSettingUpdate,
-    tenant: Annotated[TenantContext, Depends(require_role(RoleEnum.ADMIN))],
+    tenant: Annotated[TenantContext, Depends(require_role(RoleEnum.ENGINEER))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> IntegrationSettingRead:
-    """Update or create integration settings for a provider (e.g. github, slack, jira). Requires Admin role."""
+    """Update or create integration settings for a provider (e.g. github, slack, jira). Requires Engineer role."""
     query = select(IntegrationSetting).where(
         IntegrationSetting.organization_id == tenant.organization_id,
         IntegrationSetting.provider == provider.lower(),
