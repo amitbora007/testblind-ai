@@ -174,6 +174,7 @@ class HardenedSubprocessDriver:
         files: Optional[Dict[str, str]] = None,
         config: Optional[ExecutionSandboxConfig] = None,
         cancel_event: Optional[asyncio.Event] = None,
+        copy_from_dir: Optional[str] = None,
     ) -> ExecutionResult:
         cfg = config or ExecutionSandboxConfig()
         start_time = time.perf_counter()
@@ -183,18 +184,35 @@ class HardenedSubprocessDriver:
         temp_dir = tempfile.mkdtemp(prefix="run_", dir=settings.SANDBOX_BASE_DIR)
         exec_cwd = cwd or temp_dir
 
+        # Copy workspace files if requested for full execution isolation
+        if copy_from_dir and os.path.isdir(copy_from_dir):
+            shutil.copytree(
+                copy_from_dir,
+                temp_dir,
+                dirs_exist_ok=True,
+                ignore=shutil.ignore_patterns(".git", "__pycache__", ".pytest_cache"),
+            )
+            exec_cwd = temp_dir
+
         # Write any required source/test files into the sandbox
         if files:
             for rel_path, content in files.items():
-                abs_path = os.path.join(temp_dir, rel_path)
+                abs_path = os.path.join(exec_cwd, rel_path)
                 os.makedirs(os.path.dirname(abs_path), exist_ok=True)
                 with open(abs_path, "w", encoding="utf-8") as f:
                     f.write(content)
 
         # Scrub environment variables
         env = EnvironmentScrubber.scrub(cfg.custom_env)
-        # Ensure workspace is on PYTHONPATH
-        env["PYTHONPATH"] = f"{exec_cwd}:{env.get('PYTHONPATH', '')}"
+        # Ensure workspace and tests dir are on PYTHONPATH
+        tests_dir = os.path.join(exec_cwd, "tests")
+        pythonpath_entries = [exec_cwd]
+        if os.path.isdir(tests_dir):
+            pythonpath_entries.append(tests_dir)
+        old_pythonpath = env.get("PYTHONPATH", "")
+        if old_pythonpath:
+            pythonpath_entries.append(old_pythonpath)
+        env["PYTHONPATH"] = ":".join(pythonpath_entries)
 
         proc: Optional[asyncio.subprocess.Process] = None
         pgid: Optional[int] = None
@@ -344,6 +362,7 @@ class SandboxManager:
         files: Optional[Dict[str, str]] = None,
         config: Optional[ExecutionSandboxConfig] = None,
         cancel_event: Optional[asyncio.Event] = None,
+        copy_from_dir: Optional[str] = None,
     ) -> ExecutionResult:
         """
         Executes a test run or mutation check within an isolated sandbox.
@@ -355,4 +374,5 @@ class SandboxManager:
             files=files,
             config=config,
             cancel_event=cancel_event,
+            copy_from_dir=copy_from_dir,
         )
