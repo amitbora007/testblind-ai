@@ -462,6 +462,7 @@ export const api = {
     code?: string;
     token?: string;
     installation_id?: string;
+    redirect_uri?: string;
   }): Promise<GitHubStatusResponse> {
     const res = await fetch(`${API_BASE}/integrations/github/connect`, {
       method: 'POST',

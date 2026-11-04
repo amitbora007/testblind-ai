@@ -279,9 +279,16 @@ export function ProjectsPage({
 
   const handleAuthorizeOAuth = () => {
     const clientId = githubStatus.client_id || "Iv23likWm11RDgKHQaps";
-    // Omit redirect_uri so GitHub automatically uses the configured Callback URL in the GitHub App
-    // without rejecting fragment identifiers (#projects).
-    const oauthUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&scope=repo,read:org,user:email`;
+    const currentOrigin = window.location.origin;
+    // Match the exact registered callback URL in GitHub App settings:
+    // - On Render: "https://testblind-web.onrender.com/" (with trailing slash)
+    // - On Localhost: "http://localhost:3000" (without trailing slash)
+    const redirectUri = currentOrigin.includes("onrender.com")
+      ? `${currentOrigin.replace(/\/+$/, '')}/`
+      : currentOrigin.replace(/\/+$/, '');
+
+    sessionStorage.setItem("tb_github_oauth_redirect_uri", redirectUri);
+    const oauthUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=repo,read:org,user:email`;
     window.location.href = oauthUrl;
   };
 
@@ -329,8 +336,14 @@ export function ProjectsPage({
     setGitHubAuthError(null);
     setIsConnectModalOpen(true);
     setActiveTab("github");
+    const redirect_uri = sessionStorage.getItem("tb_github_oauth_redirect_uri") || (
+      window.location.origin.includes("onrender.com")
+        ? `${window.location.origin.replace(/\/+$/, '')}/`
+        : window.location.origin.replace(/\/+$/, '')
+    );
     try {
-      const status = await api.connectGitHub({ code });
+      const status = await api.connectGitHub({ code, redirect_uri });
+      sessionStorage.removeItem("tb_github_oauth_redirect_uri");
       setGithubStatus(status);
       setSuccessToast(`Connected to GitHub as @${status.account || "user"}!`);
       const cleanUrl = window.location.origin + window.location.pathname + "#projects";
@@ -1047,7 +1060,7 @@ export function ProjectsPage({
                           Authenticate with GitHub to automatically list your public and private repositories.
                         </p>
                         <p className="text-[10px] text-slate-500 mt-0.5">
-                          GitHub App Callback URL: <span className="font-mono text-slate-400">http://localhost:3000</span> (or connect instantly via PAT below)
+                          GitHub App Callback URL: <span className="font-mono text-slate-400">{typeof window !== 'undefined' ? (window.location.origin.includes("onrender.com") ? `${window.location.origin}/` : window.location.origin) : 'http://localhost:3000'}</span> (or connect instantly via PAT below)
                         </p>
                       </div>
                     </div>

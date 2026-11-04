@@ -110,7 +110,8 @@ async def get_github_authorize_url() -> dict:
 async def github_oauth_callback(code: str, state: Optional[str] = None):
     """Handles OAuth redirect from GitHub, bouncing user to the frontend Projects view with the code."""
     from fastapi.responses import RedirectResponse
-    return RedirectResponse(url=f"http://localhost:3000/#projects?code={code}")
+    frontend_base = (settings.FRONTEND_URL or "http://localhost:3000").rstrip("/")
+    return RedirectResponse(url=f"{frontend_base}/#projects?code={code}")
 
 
 @router.post("/connect", response_model=GitHubStatusRead)
@@ -142,15 +143,19 @@ async def connect_github(
     # 1. If an OAuth temporary code is provided, exchange it for an access token
     if payload.code:
         try:
+            token_payload = {
+                "client_id": settings.GITHUB_CLIENT_ID,
+                "client_secret": settings.GITHUB_CLIENT_SECRET,
+                "code": payload.code,
+            }
+            if payload.redirect_uri:
+                token_payload["redirect_uri"] = payload.redirect_uri
+
             async with httpx.AsyncClient(timeout=10.0) as client:
                 code_res = await client.post(
                     "https://github.com/login/oauth/access_token",
                     headers={"Accept": "application/json", "User-Agent": "TestBlind-AI"},
-                    data={
-                        "client_id": settings.GITHUB_CLIENT_ID,
-                        "client_secret": settings.GITHUB_CLIENT_SECRET,
-                        "code": payload.code,
-                    },
+                    data=token_payload,
                 )
                 if code_res.status_code == 200:
                     token_data = code_res.json()

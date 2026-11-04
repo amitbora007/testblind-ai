@@ -31,6 +31,7 @@ class GitHubConnectRequest(BaseModel):
     code: Optional[str] = Field(None, description="OAuth temporary authorization code.")
     installation_id: Optional[str] = Field(None, description="GitHub App installation ID.")
     token: Optional[str] = Field(None, description="GitHub Personal Access Token (PAT) or OAuth access token.")
+    redirect_uri: Optional[str] = Field(None, description="Redirect URI used during authorization.")
 
 
 class GitHubRepoItem(BaseModel):
