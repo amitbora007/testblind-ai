@@ -67,6 +67,12 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
+      - key: GITHUB_CLIENT_ID
+        value: Iv23likWm11RDgKHQaps
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      - key: GITHUB_APP_ID
+        value: "5492033"
 
   # ----------------------------------------------------------------------------
   # Frontend Single-Page Application (React 18 + Vite + TypeScript)
