@@ -2,7 +2,9 @@
 node_modules/
 .pnp
 .pnp.js
+.venv
 .venv/
+venv
 venv/
 
 # Build outputs
