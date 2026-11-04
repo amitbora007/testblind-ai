@@ -179,6 +179,7 @@ export function GapDiscoveryPage() {
   const [isPromoting, setIsPromoting] = useState<boolean>(false);
   const [promotedSuccess, setPromotedSuccess] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState<boolean>(false);
+  const [scanError, setScanError] = useState<string | null>(null);
 
   // Initial Data Load
   const [availableBranches, setAvailableBranches] = useState<string[]>(['main']);
@@ -274,6 +275,7 @@ export function GapDiscoveryPage() {
   // Run Gap Analysis Trigger
   const handleRunScan = async () => {
     setIsScanning(true);
+    setScanError(null);
     try {
       if (selectedProjectId && isLiveBackend) {
         const newJob = await api.triggerScanJobSync(selectedProjectId, selectedBranch);
@@ -287,8 +289,9 @@ export function GapDiscoveryPage() {
           setMutations(DEMO_MUTATIONS);
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Scan execution error:', err);
+      setScanError(err.message || 'Scan execution failed');
     } finally {
       setIsScanning(false);
     }
@@ -495,6 +498,38 @@ export function GapDiscoveryPage() {
           </Button>
         </div>
       </div>
+
+      {/* Scan Error Banner */}
+      {scanError && (
+        <div className="p-4 rounded-xl bg-red-950/40 border border-red-500/40 flex items-start justify-between gap-3 animate-in fade-in-50">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <h4 className="text-xs font-semibold text-red-200">Gap Analysis Execution Notice</h4>
+              <p className="text-xs text-slate-300 leading-relaxed">{scanError}</p>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setScanError(null)}
+            className="text-slate-400 hover:text-white text-xs h-7 px-2"
+          >
+            Dismiss
+          </Button>
+        </div>
+      )}
+
+      {/* Synthesized Python Benchmark Notice */}
+      {mutations.some((m) => (m.file_path || '').includes('_benchmark.py')) && (
+        <div className="p-3.5 rounded-xl bg-blue-950/40 border border-blue-500/30 flex items-start gap-3 text-xs text-slate-300 animate-in fade-in-50">
+          <Sparkles className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
+          <div className="space-y-0.5">
+            <span className="font-semibold text-blue-200">Evaluation Benchmark Active: </span>
+            This repository contains no native Python (<code className="text-blue-300">.py</code>) source files. TestBlind AI generated an AST evaluation benchmark module to demonstrate mutation injection, sandbox test execution, and AI test synthesis.
+          </div>
+        </div>
+      )}
 
       {/* 4 KPI Metrics Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
