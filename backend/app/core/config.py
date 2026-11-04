@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 from typing import List, Union
-from pydantic import AnyHttpUrl, field_validator
+from pydantic import AnyHttpUrl, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _backend_dir = Path(__file__).resolve().parent.parent.parent  # /backend
@@ -58,8 +58,10 @@ class Settings(BaseSettings):
     DOCKER_HOST_SOCKET: str = "/var/run/docker.sock"
     SANDBOX_BASE_DIR: str = "/tmp/testblind_sandboxes"
 
+    FRONTEND_URL: Union[str, None] = None
+
     # CORS Origins
-    BACKEND_CORS_ORIGINS: List[str] = [
+    BACKEND_CORS_ORIGINS: Union[str, List[str]] = [
         "http://localhost:3000",
         "http://localhost:4173",
         "http://localhost:5173",
@@ -67,6 +69,33 @@ class Settings(BaseSettings):
         "http://127.0.0.1:4173",
         "http://127.0.0.1:5173",
     ]
+
+    @field_validator("BACKEND_CORS_ORIGINS", mode="after")
+    @classmethod
+    def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
+        if isinstance(v, str):
+            stripped = v.strip()
+            if stripped.startswith("[") and stripped.endswith("]"):
+                try:
+                    import json
+                    parsed = json.loads(stripped)
+                    if isinstance(parsed, list):
+                        return [str(item).strip() for item in parsed if str(item).strip()]
+                except Exception:
+                    pass
+            return [origin.strip() for origin in stripped.split(",") if origin.strip()]
+        elif isinstance(v, list):
+            return [str(origin).strip() for origin in v if str(origin).strip()]
+        return []
+
+    @model_validator(mode="after")
+    def add_frontend_url_to_cors(self) -> "Settings":
+        if self.FRONTEND_URL:
+            clean_url = self.FRONTEND_URL.strip().rstrip("/")
+            if clean_url and isinstance(self.BACKEND_CORS_ORIGINS, list):
+                if clean_url not in self.BACKEND_CORS_ORIGINS:
+                    self.BACKEND_CORS_ORIGINS.append(clean_url)
+        return self
 
     # Database
     POSTGRES_SERVER: str = "localhost"
@@ -79,10 +108,13 @@ class Settings(BaseSettings):
     @property
     def async_database_url(self) -> str:
         if self.DATABASE_URL:
-            # Ensure asyncpg dialect
-            if self.DATABASE_URL.startswith("postgresql://"):
-                return self.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
-            return self.DATABASE_URL
+            url = self.DATABASE_URL.strip()
+            # Normalize Render/Heroku postgres:// or postgresql:// to SQLAlchemy asyncpg dialect
+            if url.startswith("postgres://"):
+                return url.replace("postgres://", "postgresql+asyncpg://", 1)
+            elif url.startswith("postgresql://"):
+                return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            return url
         return (
             f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
             f"@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
@@ -91,9 +123,15 @@ class Settings(BaseSettings):
     @property
     def sync_database_url(self) -> str:
         if self.DATABASE_URL:
-            if self.DATABASE_URL.startswith("postgresql+asyncpg://"):
-                return self.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql+psycopg2://", 1)
-            return self.DATABASE_URL
+            url = self.DATABASE_URL.strip()
+            # Normalize Render/Heroku postgres://, asyncpg, or postgresql:// to sync psycopg2
+            if url.startswith("postgres://"):
+                return url.replace("postgres://", "postgresql+psycopg2://", 1)
+            elif url.startswith("postgresql+asyncpg://"):
+                return url.replace("postgresql+asyncpg://", "postgresql+psycopg2://", 1)
+            elif url.startswith("postgresql://"):
+                return url.replace("postgresql://", "postgresql+psycopg2://", 1)
+            return url
         return (
             f"postgresql+psycopg2://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
             f"@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"

@@ -335,4 +335,148 @@ jobs:
 - **Active & Certified:** GitHub Actions (`functional_and_configured`).
 - **Planned Roadmap:** GitLab CI, Jenkins Pipelines, CircleCI Orbs (clearly designated with `status: planned` in the contract API).
 
+---
+
+## 10. Deploying to Render (render.com)
+
+TestBlind AI is fully configured for deployment on [Render](https://render.com) as a full-stack system comprising:
+1. **Managed PostgreSQL**: Managed PostgreSQL 16 database (`testblind-postgres`).
+2. **Backend Web Service**: FastAPI + Python 3.12 ASGI service (`testblind-api`).
+3. **Frontend Static Site**: React 18 + Vite SPA with global CDN and rewrite rules (`testblind-web`).
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│ Render Production Architecture Topology                                │
+├─────────────────────┬───────────────────┬──────────────────────────────┤
+│ Resource            │ Render Type       │ Configuration / Binding      │
+├─────────────────────┼───────────────────┼──────────────────────────────┤
+│ `testblind-web`     │ Static Site       │ SPA rewrite `/*` -> `/index` │
+│ `testblind-api`     │ Web Service       │ Python 3.12 Uvicorn ASGI     │
+│ `testblind-postgres`│ Managed Database  │ PostgreSQL 16 Private Link   │
+└─────────────────────┴───────────────────┴──────────────────────────────┘
+```
+
+---
+
+### 10.1 Option A: 1-Click Blueprint Deployment (`render.yaml`)
+
+The repository includes a production-tested Infrastructure-as-Code blueprint in the root directory: [`render.yaml`](file:///home/amit.bora/Downloads/ai/TestBlind%20AI/render.yaml).
+
+#### Deployment Steps:
+1. **Push your repository** to GitHub or GitLab.
+2. Log in to the [Render Dashboard](https://dashboard.render.com).
+3. Click **New +** in the top navigation and select **Blueprint**.
+4. Connect your TestBlind AI repository and branch (e.g., `render-deployment` or `main`).
+5. Render will automatically parse `render.yaml` and display the resources to be provisioned:
+   - `testblind-postgres` (PostgreSQL Database)
+   - `testblind-api` (Web Service)
+   - `testblind-web` (Static Site)
+6. Supply the required LLM provider API keys when prompted (e.g. `GEMINI_API_KEY`, `OPENAI_API_KEY`, or leave blank to use the deterministic local AST synthesizer).
+7. Click **Apply**. Render will:
+   - Provision the PostgreSQL database.
+   - Build the backend using `backend/render-build.sh` (installing dependencies and executing `alembic upgrade head`).
+   - Launch the FastAPI ASGI server with health checks on `/api/v1/health/live`.
+   - Build the frontend static bundle and deploy it to Render's global CDN.
+
+---
+
+### 10.2 Option B: Manual Setup via Render Dashboard
+
+If you prefer to configure each service manually in the Render UI:
+
+#### Step 1: Provision Managed PostgreSQL Database
+1. Go to **New + > PostgreSQL**.
+2. **Name:** `testblind-postgres`
+3. **Database:** `testblind_db`
+4. **User:** `testblind_user`
+5. **Region:** Choose your preferred region (e.g. `Oregon` or `Frankfurt`).
+6. **Plan:** `Free` (or `Starter` for production workloads).
+7. Click **Create Database**.
+8. Copy the **Internal Database URL** (e.g. `postgres://testblind_user:...@dpg-...-a/testblind_db`).
+
+#### Step 2: Deploy Backend Web Service
+1. Go to **New + > Web Service**.
+2. Connect your Git repository.
+3. Configure the service settings:
+   - **Name:** `testblind-api`
+   - **Root Directory:** `backend`
+   - **Runtime:** `Python`
+   - **Build Command:** `./render-build.sh` (or `pip install -r requirements.txt && alembic upgrade head`)
+   - **Start Command:** `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+   - **Health Check Path:** `/api/v1/health/live`
+4. In **Environment Variables**, add:
+   | Key | Value / Source | Description |
+   | :--- | :--- | :--- |
+   | `PYTHON_VERSION` | `3.12.8` | Pins Python 3.12 runtime |
+   | `ENVIRONMENT` | `production` | Production environment flag |
+   | `DEBUG` | `false` | Disables traceback leakage |
+   | `SECRET_KEY` | *(Click "Generate")* | 32+ byte cryptographic secret |
+   | `DATABASE_URL` | *(Paste Internal Database URL from Step 1)* | Database connection URI |
+   | `MAX_CONCURRENT_WORKERS`| `2` | Bounded worker concurrency |
+   | `EXECUTION_MAX_MEMORY_MB`| `512` | Subprocess RLIMIT memory cap |
+   | `SANDBOX_BASE_DIR`| `/tmp/testblind_sandboxes` | Isolated execution directory |
+   | `FRONTEND_URL` | `https://testblind-web.onrender.com` | Frontend URL |
+   | `BACKEND_CORS_ORIGINS` | `https://testblind-web.onrender.com,http://localhost:3000` | Allowed CORS origins |
+   | `DEFAULT_LLM_PROVIDER` | `gemini` (or `local` / `anthropic` / `openai`) | Synthesis LLM driver |
+   | `GEMINI_API_KEY` | *(Your Gemini API key)* | Optional API key |
+5. Click **Create Web Service**.
+
+#### Step 3: Deploy Frontend Static Site
+1. Go to **New + > Static Site**.
+2. Connect your Git repository.
+3. Configure the static site settings:
+   - **Name:** `testblind-web`
+   - **Root Directory:** `frontend`
+   - **Build Command:** `npm install && npm run build`
+   - **Publish Directory:** `dist`
+4. In **Redirects/Rewrites**, add:
+   - **Type:** `Rewrite`
+   - **Source:** `/*`
+   - **Destination:** `/index.html`
+5. In **Environment Variables**, add:
+   - `NODE_VERSION`: `20.18.0`
+   - `VITE_API_BASE_URL`: `https://testblind-api.onrender.com` *(use your actual backend service URL)*
+6. Click **Create Static Site**.
+
+---
+
+### 10.3 Render-Specific Architectural Considerations
+
+#### 1. Database URL Dialect Normalization
+Render exports database URLs with the legacy `postgres://` schema:
+```
+postgres://user:password@dpg-...:5432/testblind_db
+```
+SQLAlchemy 2.0 async engine strictly requires `postgresql+asyncpg://`, and Alembic sync migrations require `postgresql+psycopg2://`. The backend settings module (`backend/app/core/config.py`) automatically detects both `postgres://` and `postgresql://` and converts them to the correct driver dialect dynamically.
+
+#### 2. CORS Flexibility for Dynamic Render URLs
+Render generates URLs in the form `https://<service-name>.onrender.com`. The configuration parser supports:
+- Comma-separated strings: `BACKEND_CORS_ORIGINS="https://testblind-web.onrender.com,http://localhost:3000"`
+- JSON string arrays: `BACKEND_CORS_ORIGINS='["https://testblind-web.onrender.com"]'`
+- Dynamic injection: Setting `FRONTEND_URL` automatically injects that URL into CORS allowed origins.
+
+#### 3. Execution Sandbox Isolation without Docker-in-Docker
+Render Web Services execute inside unprivileged container instances where the Docker host socket (`/var/run/docker.sock`) is not mounted. TestBlind AI automatically routes mutation test runs and incident reproductions through the `HardenedSubprocessDriver`, enforcing POSIX memory limits (`RLIMIT_AS`), CPU timeouts (`RLIMIT_CPU`), process isolation (`os.setsid`), and stream output bounds (`1MB`) without needing root or Docker daemon access.
+
+---
+
+### 10.4 Post-Deployment Health Verification
+
+Verify that the deployed services are fully operational:
+1. **Backend Liveness Probe:**
+   ```bash
+   curl -i https://testblind-api.onrender.com/api/v1/health/live
+   # HTTP/1.1 200 OK
+   # {"status":"healthy"}
+   ```
+2. **Backend Readiness Probe (Verifies PostgreSQL Connectivity):**
+   ```bash
+   curl -i https://testblind-api.onrender.com/api/v1/health/ready
+   # HTTP/1.1 200 OK
+   # {"status":"ready","database":"connected","sandbox_driver":"hardened_subprocess"}
+   ```
+3. **Frontend Web UI:**
+   Open `https://testblind-web.onrender.com` in your browser. The application should load smoothly, displaying the Dashboard and connecting to the backend API without CORS errors.
+
+
 
