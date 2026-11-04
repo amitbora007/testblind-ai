@@ -34,7 +34,7 @@ services:
       - key: DEBUG
         value: "false"
       - key: SECRET_KEY
-        generateCrypto: true
+        generateValue: true
       - key: JWT_ALGORITHM
         value: HS256
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
@@ -75,7 +75,6 @@ services:
     name: testblind-web
     runtime: static
     rootDir: frontend
-    region: oregon
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
     routes:
