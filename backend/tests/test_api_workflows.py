@@ -263,3 +263,65 @@ async def test_integrations_and_cli_token(client: AsyncClient, tenant_a):
     assert fail_data["success"] is False
     assert "Installation ID is required" in fail_data["message"]
 
+
+@pytest.mark.asyncio
+async def test_delete_project_workflow(client: AsyncClient, tenant_a, tenant_b):
+    uid = uuid.uuid4().hex[:6]
+    # 1. Create a project in tenant A
+    create_res = await client.post(
+        "/api/v1/projects",
+        json={
+            "name": f"Deletable Service {uid}",
+            "description": "Temporary project for deletion test",
+            "framework": "pytest",
+            "default_branch": "main",
+        },
+        headers=tenant_a["headers"],
+    )
+    assert create_res.status_code == 201
+    proj_id = create_res.json()["id"]
+
+    # Connect a repo to it
+    repo_res = await client.post(
+        f"/api/v1/projects/{proj_id}/repository",
+        json={
+            "repo_type": "github",
+            "repo_url": "https://github.com/acme-corp/deletable",
+            "default_branch": "main",
+        },
+        headers=tenant_a["headers"],
+    )
+    assert repo_res.status_code == 201
+
+    # 2. Cross-tenant attempt: tenant B should NOT be able to delete tenant A's project
+    b_del_res = await client.delete(
+        f"/api/v1/projects/{proj_id}",
+        headers=tenant_b["headers"],
+    )
+    assert b_del_res.status_code == 404
+
+    # 3. Tenant A deletes their project
+    del_res = await client.delete(
+        f"/api/v1/projects/{proj_id}",
+        headers=tenant_a["headers"],
+    )
+    assert del_res.status_code == 200
+    del_data = del_res.json()
+    assert del_data["project_id"] == proj_id
+    assert "deleted successfully" in del_data["message"]
+
+    # 4. Fetching the deleted project returns 404
+    get_res = await client.get(
+        f"/api/v1/projects/{proj_id}",
+        headers=tenant_a["headers"],
+    )
+    assert get_res.status_code == 404
+
+    # 5. Subsequent delete returns 404
+    del_again_res = await client.delete(
+        f"/api/v1/projects/{proj_id}",
+        headers=tenant_a["headers"],
+    )
+    assert del_again_res.status_code == 404
+
+

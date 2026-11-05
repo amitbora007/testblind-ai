@@ -277,14 +277,16 @@ async def export_single_test_case(
     if not test_case:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Test case not found")
 
-    ext = ".py" if test_case.framework in ("pytest", "python") else ".ts"
+    is_jsts = (test_case.framework or "").lower() in ("vitest", "jest", "react", "typescript", "javascript") or (test_case.file_path or "").endswith((".ts", ".tsx", ".js", ".jsx"))
+    ext = ".ts" if is_jsts else ".py"
     filename = f"{test_case.name}{ext}"
+    comment = "//" if is_jsts else "#"
 
-    content = f"""# TestBlind AI — Certified Regression Test
-# Test ID: {test_case.id}
-# Framework: {test_case.framework}
-# Verification Hash: {test_case.evidence_hash or 'N/A'}
-# Generated At: {test_case.created_at.isoformat()}
+    content = f"""{comment} TestBlind AI — Certified Regression Test
+{comment} Test ID: {test_case.id}
+{comment} Framework: {test_case.framework}
+{comment} Verification Hash: {test_case.evidence_hash or 'N/A'}
+{comment} Generated At: {test_case.created_at.isoformat()}
 
 {test_case.code}
 """
@@ -317,21 +319,27 @@ async def export_project_test_suite(
     ).order_by(TestCase.created_at.asc())
     cases = (await db.execute(tc_query)).scalars().all()
 
-    header = f"""# ==============================================================================
-# TestBlind AI — Unified Regression Suite Export
-# Project: {project.name} (Key: {project.key})
-# Exported At: {datetime.now(timezone.utc).isoformat()}
-# Total Tests: {len(cases)}
-# ==============================================================================
-import pytest
+    is_jsts = (project.framework or "").lower() in ("vitest", "jest", "react", "typescript", "javascript") or any(
+        (c.framework or "").lower() in ("vitest", "jest", "react", "typescript", "javascript") for c in cases
+    )
+    ext = ".ts" if is_jsts else ".py"
+    comment = "//" if is_jsts else "#"
+    import_line = "import { describe, it, expect } from 'vitest';\n\n" if is_jsts else "import pytest\n\n"
 
-"""
+    slug_or_name = project.slug or project.name.lower().replace(" ", "-")
+    header = f"""{comment} ==============================================================================
+{comment} TestBlind AI — Unified Regression Suite Export
+{comment} Project: {project.name} (Slug: {slug_or_name})
+{comment} Exported At: {datetime.now(timezone.utc).isoformat()}
+{comment} Total Tests: {len(cases)}
+{comment} ==============================================================================
+{import_line}"""
     suite_code = header + "\n\n".join(
-        f"# --- Test: {c.name} (Hash: {c.evidence_hash or 'unsealed'}) ---\n{c.code}" for c in cases
+        f"{comment} --- Test: {c.name} (Hash: {c.evidence_hash or 'unsealed'}) ---\n{c.code}" for c in cases
     )
 
     return Response(
         content=suite_code,
         media_type="text/plain",
-        headers={"Content-Disposition": f'attachment; filename="{project.key.lower()}_regression_suite.py"'},
+        headers={"Content-Disposition": f'attachment; filename="{slug_or_name}_regression_suite{ext}"'},
     )

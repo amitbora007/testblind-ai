@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import logging
 import os
+import re
 import resource
 import shutil
 import signal
@@ -55,7 +56,7 @@ class ExecutionSandboxConfig:
     cpu_timeout_seconds: int = 30
     wall_timeout_seconds: int = 45
     memory_limit_mb: int = 512
-    max_processes: int = 64
+    max_processes: int = 2048
     max_file_size_bytes: int = 20 * 1024 * 1024  # 20 MB
     max_output_bytes: int = 1024 * 1024  # 1 MB
     allow_network: bool = False
@@ -140,12 +141,13 @@ def _set_posix_resource_limits(config: ExecutionSandboxConfig):
             pass
 
     # 4. Max processes / threads limit to prevent fork bombs
-    if hasattr(resource, "RLIMIT_NPROC"):
+    # On Linux, RLIMIT_NPROC is per-UID across the entire machine. Only enforce if safe.
+    if hasattr(resource, "RLIMIT_NPROC") and config.max_processes > 0:
         try:
-            resource.setrlimit(
-                resource.RLIMIT_NPROC,
-                (config.max_processes, config.max_processes),
-            )
+            curr_soft, curr_hard = resource.getrlimit(resource.RLIMIT_NPROC)
+            safe_limit = max(config.max_processes, 2048)
+            if safe_limit < curr_hard:
+                resource.setrlimit(resource.RLIMIT_NPROC, (safe_limit, curr_hard))
         except (ValueError, OSError):
             pass
 
@@ -376,3 +378,175 @@ class SandboxManager:
             cancel_event=cancel_event,
             copy_from_dir=copy_from_dir,
         )
+
+
+class JSTSSandboxHarness:
+    """
+    Centralized in-memory Vitest, Jest, and React mock harness
+    and TypeScript syntax sanitizers for isolated Node.js sandbox execution.
+    """
+
+    VITEST_PKG_JSON: str = '{"name": "vitest", "main": "index.js", "type": "module"}'
+    JEST_PKG_JSON: str = '{"name": "@jest/globals", "main": "index.js", "type": "module"}'
+    REACT_PKG_JSON: str = '{"name": "react", "main": "index.js", "type": "module"}'
+
+    VITEST_INDEX_JS: str = '''
+export function describe(name, fn) {
+  console.log(`SUITE: ${name}`);
+  fn();
+}
+export function it(name, fn) {
+  console.log(`  RUN: ${name}`);
+  fn();
+  console.log(`  PASS: ${name}`);
+}
+it.skip = (name, fn) => { console.log(`  SKIP: ${name}`); };
+it.only = it;
+
+export function test(name, fn) {
+  console.log(`  RUN: ${name}`);
+  fn();
+  console.log(`  PASS: ${name}`);
+}
+test.skip = it.skip;
+test.only = test;
+
+export function expect(actual) {
+  return {
+    toBe(expected) {
+      if (actual !== expected) throw new Error(`Expected ${expected} but received ${actual}`);
+    },
+    toEqual(expected) {
+      if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+        throw new Error(`Expected deep equality matching ${JSON.stringify(expected)} but got ${JSON.stringify(actual)}`);
+      }
+    },
+    toBeDefined() {
+      if (actual === undefined) throw new Error('Expected value to be defined');
+    },
+    toBeUndefined() {
+      if (actual !== undefined) throw new Error(`Expected undefined but received ${actual}`);
+    },
+    toBeNull() {
+      if (actual !== null) throw new Error(`Expected null but received ${actual}`);
+    },
+    toBeTruthy() {
+      if (!actual) throw new Error(`Expected truthy value but received ${actual}`);
+    },
+    toBeFalsy() {
+      if (actual) throw new Error(`Expected falsy value but received ${actual}`);
+    },
+    toBeGreaterThan(expected) {
+      if (!(actual > expected)) throw new Error(`Expected ${actual} > ${expected}`);
+    },
+    toBeGreaterThanOrEqual(expected) {
+      if (!(actual >= expected)) throw new Error(`Expected ${actual} >= ${expected}`);
+    },
+    toBeLessThan(expected) {
+      if (!(actual < expected)) throw new Error(`Expected ${actual} < ${expected}`);
+    },
+    toBeLessThanOrEqual(expected) {
+      if (!(actual <= expected)) throw new Error(`Expected ${actual} <= ${expected}`);
+    },
+    toBeCloseTo(expected, precision = 2) {
+      if (Math.abs(actual - expected) > Math.pow(10, -precision)) {
+        throw new Error(`Expected ${actual} to be close to ${expected} (precision: ${precision})`);
+      }
+    },
+    toContain(item) {
+      const ok = typeof actual === 'string' ? actual.includes(item) : (Array.isArray(actual) ? actual.includes(item) : false);
+      if (!ok) throw new Error(`Expected container to contain ${item}`);
+    },
+    toHaveLength(len) {
+      const actualLen = actual ? actual.length : 0;
+      if (actualLen !== len) throw new Error(`Expected length ${len} but received ${actualLen}`);
+    },
+    toThrow(expectedMessage) {
+      let threw = false;
+      let thrownError = null;
+      if (typeof actual === 'function') {
+        try {
+          actual();
+        } catch (e) {
+          threw = true;
+          thrownError = e;
+        }
+      }
+      if (!threw) {
+        throw new Error('Expected function to throw an exception, but it did not throw.');
+      }
+      if (expectedMessage && thrownError) {
+        const msg = thrownError.message || String(thrownError);
+        if (!msg.includes(expectedMessage)) {
+          throw new Error(`Expected thrown error message to include "${expectedMessage}", but received "${msg}".`);
+        }
+      }
+    },
+    not: {
+      toBeNull() {
+        if (actual === null) throw new Error('Expected value not to be null');
+      },
+      toBe(expected) {
+        if (actual === expected) throw new Error(`Expected value not to be ${expected}`);
+      },
+      toEqual(expected) {
+        if (JSON.stringify(actual) === JSON.stringify(expected)) throw new Error(`Expected values not to deeply equal`);
+      },
+      toBeDefined() {
+        if (actual !== undefined) throw new Error('Expected undefined');
+      },
+      toBeTruthy() {
+        if (actual) throw new Error('Expected falsy');
+      },
+      toBeFalsy() {
+        if (!actual) throw new Error('Expected truthy');
+      },
+      toContain(item) {
+        const ok = typeof actual === 'string' ? actual.includes(item) : (Array.isArray(actual) ? actual.includes(item) : false);
+        if (ok) throw new Error(`Expected not to contain ${item}`);
+      },
+      toThrow() {
+        if (typeof actual === 'function') {
+          try {
+            actual();
+          } catch (e) {
+            throw new Error(`Expected function not to throw, but it threw: ${e.message}`);
+          }
+        }
+      }
+    }
+  };
+}
+export default { describe, it, test, expect };
+'''
+
+    REACT_INDEX_JS: str = '''
+export default {};
+export const useState = (init) => [init, () => {}];
+export const useEffect = () => {};
+export const useCallback = (fn) => fn;
+export const useMemo = (fn) => fn();
+export const useRef = (init) => ({ current: init });
+'''
+
+    @classmethod
+    def strip_typescript_types(cls, code: str) -> str:
+        """Strips common TypeScript annotations to allow native Node.js ESM execution."""
+        clean = re.sub(r':\s*(?:number|string|boolean|any|void|float|int)(?=[,\)])', '', code)
+        clean = re.sub(r'\)\s*:\s*[a-zA-Z0-9_<>[\]|& ]+\s*\{', ') {', clean)
+        clean = re.sub(r':\s*(?:number|string|boolean|any|void|float|int)\b', '', clean)
+        return clean
+
+    @classmethod
+    def get_harness_files(cls) -> Dict[str, str]:
+        """Returns standard in-memory package files for Node.js sandbox execution."""
+        return {
+            "package.json": '{"type": "module"}\n',
+            "node_modules/vitest/package.json": cls.VITEST_PKG_JSON,
+            "node_modules/vitest/index.js": cls.VITEST_INDEX_JS,
+            "node_modules/@jest/globals/package.json": cls.JEST_PKG_JSON,
+            "node_modules/@jest/globals/index.js": cls.VITEST_INDEX_JS,
+            "node_modules/react/package.json": cls.REACT_PKG_JSON,
+            "node_modules/react/index.js": cls.REACT_INDEX_JS,
+        }
+

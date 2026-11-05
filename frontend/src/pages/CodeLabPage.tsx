@@ -70,14 +70,84 @@ def test_invalid_negative_order_raises():
         calculate_tier_discount(0.0, "GOLD")
 `;
 
+const DEFAULT_TS_SOURCE = `export function calculateTierDiscount(orderTotal: number, customerTier: string): number {
+  /**
+   * Calculates percentage discount based on order amount and loyalty tier.
+   * Bug blindspot: surviving mutation when orderTotal === 100.0 or negative totals.
+   */
+  if (orderTotal <= 0) {
+    throw new Error("Order total must be positive");
+  }
+
+  if (customerTier === "PLATINUM") {
+    if (orderTotal > 500) {
+      return 0.25;
+    } else if (orderTotal > 100) {
+      return 0.15;
+    }
+    return 0.05;
+  } else if (customerTier === "GOLD") {
+    if (orderTotal > 100) {
+      return 0.10;
+    }
+    return 0.02;
+  }
+  return 0.0;
+}
+`;
+
+const DEFAULT_TS_TEST = `import { describe, it, expect } from "vitest";
+import { calculateTierDiscount } from "./solution";
+
+describe("calculateTierDiscount", () => {
+  it("calculates high value platinum discount", () => {
+    expect(calculateTierDiscount(600, "PLATINUM")).toBe(0.25);
+  });
+
+  it("calculates regular gold discount", () => {
+    expect(calculateTierDiscount(200, "GOLD")).toBe(0.10);
+  });
+});
+`;
+
+const SYNTHESIZED_TS_TEST = `import { describe, it, expect } from "vitest";
+import { calculateTierDiscount } from "./solution";
+
+describe("calculateTierDiscount - Boundary Assertions", () => {
+  it("kills ROR mutation at 100.0 boundary for platinum", () => {
+    expect(calculateTierDiscount(100.0, "PLATINUM")).toBe(0.05);
+  });
+
+  it("validates zero and negative total error contracts", () => {
+    expect(() => calculateTierDiscount(-1.0, "PLATINUM")).toThrow("Order total must be positive");
+    expect(() => calculateTierDiscount(0.0, "GOLD")).toThrow("Order total must be positive");
+  });
+});
+`;
+
+const getMonacoLanguage = (lang: string): string => {
+  if (lang === 'typescript' || lang === 'react') return 'typescript';
+  if (lang === 'javascript') return 'javascript';
+  if (lang === 'go') return 'go';
+  return 'python';
+};
+
+const getSolutionFilename = (lang: string): string => {
+  if (lang === 'typescript') return 'solution.ts';
+  if (lang === 'react') return 'solution.tsx';
+  if (lang === 'javascript') return 'solution.js';
+  if (lang === 'go') return 'solution.go';
+  return 'solution.py';
+};
+
 import { api, CodeLabAnalyzeResult, CodeLabExecuteResult } from '@/services/api';
 
 export function CodeLabPage() {
-  const [language, setLanguage] = useState<'python' | 'typescript' | 'go'>('python');
+  const [language, setLanguage] = useState<'python' | 'typescript' | 'javascript' | 'react' | 'go'>('python');
   const [sourceCode, setSourceCode] = useState(DEFAULT_PYTHON_SOURCE);
   const [existingTests, setExistingTests] = useState(DEFAULT_PYTHON_TEST);
   const [expectedBehavior, setExpectedBehavior] = useState(
-    'Order totals <= 0 must immediately raise ValueError. Exact boundary of $100.0 must return 0.05 for PLATINUM.'
+    'Order totals <= 0 must immediately raise ValueError / Error. Exact boundary of $100.0 must return 0.05 for PLATINUM.'
   );
 
   const [activeInputTab, setActiveInputTab] = useState<'source' | 'tests' | 'behavior'>('source');
@@ -168,20 +238,43 @@ export function CodeLabPage() {
     setTimeout(() => setCopyFeedback(false), 2000);
   };
 
+  const handleLanguageChange = (newLang: 'python' | 'typescript' | 'javascript' | 'react' | 'go') => {
+    setLanguage(newLang);
+    if (newLang === 'typescript' || newLang === 'javascript' || newLang === 'react') {
+      if (sourceCode === DEFAULT_PYTHON_SOURCE) {
+        setSourceCode(DEFAULT_TS_SOURCE);
+        setExistingTests(DEFAULT_TS_TEST);
+        setSynthesizedTestCode(SYNTHESIZED_TS_TEST);
+      }
+    } else if (newLang === 'python') {
+      if (sourceCode === DEFAULT_TS_SOURCE) {
+        setSourceCode(DEFAULT_PYTHON_SOURCE);
+        setExistingTests(DEFAULT_PYTHON_TEST);
+        setSynthesizedTestCode(SYNTHESIZED_PYTHON_TEST);
+      }
+    }
+  };
+
   const handleDownload = () => {
     const blob = new Blob([sourceCode], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `solution.${language === 'python' ? 'py' : language === 'typescript' ? 'ts' : 'go'}`;
+    a.download = getSolutionFilename(language);
     a.click();
     URL.revokeObjectURL(url);
   };
 
   const handleReset = () => {
-    setSourceCode(DEFAULT_PYTHON_SOURCE);
-    setExistingTests(DEFAULT_PYTHON_TEST);
-    setSynthesizedTestCode(SYNTHESIZED_PYTHON_TEST);
+    if (language === 'typescript' || language === 'javascript' || language === 'react') {
+      setSourceCode(DEFAULT_TS_SOURCE);
+      setExistingTests(DEFAULT_TS_TEST);
+      setSynthesizedTestCode(SYNTHESIZED_TS_TEST);
+    } else {
+      setSourceCode(DEFAULT_PYTHON_SOURCE);
+      setExistingTests(DEFAULT_PYTHON_TEST);
+      setSynthesizedTestCode(SYNTHESIZED_PYTHON_TEST);
+    }
   };
 
   return (
@@ -203,11 +296,13 @@ export function CodeLabPage() {
         <div className="flex items-center gap-2 w-full sm:w-auto">
           <Select
             value={language}
-            onChange={(e) => setLanguage(e.target.value as any)}
-            className="w-36 text-xs"
+            onChange={(e) => handleLanguageChange(e.target.value as any)}
+            className="w-48 text-xs"
           >
             <option value="python">Python (pytest)</option>
             <option value="typescript">TypeScript (vitest)</option>
+            <option value="javascript">JavaScript (jest/vitest)</option>
+            <option value="react">React / JSX (vitest)</option>
             <option value="go">Go (testing)</option>
           </Select>
 
@@ -281,7 +376,7 @@ export function CodeLabPage() {
 
             <div className="flex items-center gap-2">
               <span className="text-[11px] font-mono text-slate-500 hidden sm:inline">
-                {language === 'python' ? 'solution.py' : 'solution.ts'}
+                {getSolutionFilename(language)}
               </span>
             </div>
           </CardHeader>
@@ -290,7 +385,7 @@ export function CodeLabPage() {
             {activeInputTab === 'source' && (
               <Editor
                 height="100%"
-                language={language}
+                language={getMonacoLanguage(language)}
                 theme="vs-dark"
                 value={sourceCode}
                 onChange={(val) => setSourceCode(val || '')}
@@ -308,7 +403,7 @@ export function CodeLabPage() {
             {activeInputTab === 'tests' && (
               <Editor
                 height="100%"
-                language={language}
+                language={getMonacoLanguage(language)}
                 theme="vs-dark"
                 value={existingTests}
                 onChange={(val) => setExistingTests(val || '')}
@@ -475,7 +570,7 @@ export function CodeLabPage() {
             <CardContent className="p-0 flex-1 relative bg-slate-950">
               <Editor
                 height="100%"
-                language={language}
+                language={getMonacoLanguage(language)}
                 theme="vs-dark"
                 value={synthesizedTestCode}
                 options={{

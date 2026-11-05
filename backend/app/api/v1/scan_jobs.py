@@ -116,10 +116,47 @@ async def ensure_project_workspace(
         target_dir.mkdir(parents=True, exist_ok=True)
         workspace_path = str(target_dir)
 
-        src_file = os.path.join(workspace_path, f"{safe_name}.py")
-        if not os.path.exists(src_file):
-            with open(src_file, "w", encoding="utf-8") as f:
-                f.write(f'''def {safe_name}_compute(value: float, factor: float = 1.5) -> float:
+        is_jsts = (project.framework or "").lower() in ("vitest", "jest", "react", "typescript", "javascript")
+        tests_dir = os.path.join(workspace_path, "tests")
+        os.makedirs(tests_dir, exist_ok=True)
+
+        if is_jsts:
+            src_file = os.path.join(workspace_path, f"{safe_name}.ts")
+            if not os.path.exists(src_file):
+                with open(src_file, "w", encoding="utf-8") as f:
+                    f.write(f'''export function {safe_name}_compute(value: number, factor: number = 1.5): number {{
+    if (value <= 0) {{
+        throw new Error("Value must be positive");
+    }}
+    if (value > 50) {{
+        return value * factor;
+    }}
+    return value + factor;
+}}
+''')
+            test_file = os.path.join(tests_dir, f"{safe_name}.test.ts")
+            if not os.path.exists(test_file):
+                with open(test_file, "w", encoding="utf-8") as f:
+                    f.write(f'''import {{ describe, it, expect }} from 'vitest';
+import {{ {safe_name}_compute }} from '../{safe_name}';
+
+describe('{safe_name} tests', () => {{
+    it('verifies nominal execution', () => {{
+        expect({safe_name}_compute(100.0, 2.0)).toBe(200.0);
+    }});
+    it('verifies boundary calculation', () => {{
+        expect({safe_name}_compute(20.0, 5.0)).toBe(25.0);
+    }});
+    it('verifies error barrier on invalid inputs', () => {{
+        expect(() => {safe_name}_compute(-10.0)).toThrow();
+    }});
+}});
+''')
+        else:
+            src_file = os.path.join(workspace_path, f"{safe_name}.py")
+            if not os.path.exists(src_file):
+                with open(src_file, "w", encoding="utf-8") as f:
+                    f.write(f'''def {safe_name}_compute(value: float, factor: float = 1.5) -> float:
     if value <= 0:
         raise ValueError("Value must be positive")
     if value > 50:
@@ -127,12 +164,10 @@ async def ensure_project_workspace(
     return value + factor
 ''')
 
-        tests_dir = os.path.join(workspace_path, "tests")
-        os.makedirs(tests_dir, exist_ok=True)
-        test_file = os.path.join(tests_dir, f"test_{safe_name}.py")
-        if not os.path.exists(test_file):
-            with open(test_file, "w", encoding="utf-8") as f:
-                f.write(f'''import pytest
+            test_file = os.path.join(tests_dir, f"test_{safe_name}.py")
+            if not os.path.exists(test_file):
+                with open(test_file, "w", encoding="utf-8") as f:
+                    f.write(f'''import pytest
 from {safe_name} import {safe_name}_compute
 
 def test_{safe_name}_nominal():
@@ -146,54 +181,18 @@ def test_{safe_name}_invalid():
         {safe_name}_compute(-10.0)
 ''')
 
-    # Discover Python source files in workspace
-    py_files = TestDiscoveryService.discover_python_files(workspace_path)
-    if not py_files["source_files"]:
-        # If the connected repository contains no native Python source files (e.g. JavaScript, TypeScript, Go),
-        # auto-scaffold an evaluation benchmark module so AST mutation scanning and synthesis work seamlessly
-        import re
-        safe_name = re.sub(r'[^a-zA-Z0-9_]', '_', project.name).lower().strip('_') or "project_module"
-        src_file = os.path.join(workspace_path, f"{safe_name}_benchmark.py")
-        if not os.path.exists(src_file):
-            with open(src_file, "w", encoding="utf-8") as f:
-                f.write(f'''def {safe_name}_compute(value: float, factor: float = 1.5) -> float:
-    """Benchmark calculation module for {project.name} AST mutation analysis."""
-    if value <= 0:
-        raise ValueError("Value must be positive")
-    if value > 50:
-        return value * factor
-    return value + factor
-''')
-
-        tests_dir = os.path.join(workspace_path, "tests")
-        os.makedirs(tests_dir, exist_ok=True)
-        test_file = os.path.join(tests_dir, f"test_{safe_name}_benchmark.py")
-        if not os.path.exists(test_file):
-            with open(test_file, "w", encoding="utf-8") as f:
-                f.write(f'''import pytest
-from {safe_name}_benchmark import {safe_name}_compute
-
-def test_{safe_name}_nominal():
-    assert {safe_name}_compute(100.0, 2.0) == 200.0
-
-def test_{safe_name}_boundary():
-    assert {safe_name}_compute(20.0, 5.0) == 25.0
-
-def test_{safe_name}_invalid():
-    with pytest.raises(ValueError):
-        {safe_name}_compute(-10.0)
-''')
-        # Re-discover Python files including the scaffolded benchmark module
-        py_files = TestDiscoveryService.discover_python_files(workspace_path)
-
-    # Ensure tests directory and conftest.py exist
+    # Discover source files in workspace across Python, TypeScript, JavaScript, React
+    discovered = TestDiscoveryService.discover_source_and_test_files(workspace_path)
+    primary_lang = discovered["language"]
     tests_dir = os.path.join(workspace_path, "tests")
     os.makedirs(tests_dir, exist_ok=True)
 
-    conftest_path = os.path.join(tests_dir, "conftest.py")
-    if not os.path.exists(conftest_path):
-        with open(conftest_path, "w", encoding="utf-8") as f:
-            f.write('''import sys, os, builtins, types
+    # Ensure conftest.py exists only for Python workspaces
+    if primary_lang == "python":
+        conftest_path = os.path.join(tests_dir, "conftest.py")
+        if not os.path.exists(conftest_path):
+            with open(conftest_path, "w", encoding="utf-8") as f:
+                f.write('''import sys, os, builtins, types
 from unittest.mock import MagicMock
 from importlib.machinery import ModuleSpec
 
@@ -251,22 +250,34 @@ sys.exit = _safe_exit
 ''')
 
     # If no test files on disk, materialize from DB or auto-generate
-    if not py_files["test_files"]:
+    if not discovered.get("test_files"):
         tc_q = select(TestCase).where(
             TestCase.project_id == project_id,
             TestCase.organization_id == organization_id,
         )
         existing_cases = (await db.execute(tc_q)).scalars().all()
         if existing_cases:
-            test_file_path = os.path.join(tests_dir, "test_auto_generated.py")
-            combined = "# ====================================================================\n"
-            combined += "# TestBlind AI Auto-Generated Test Suite\n"
-            combined += "# ====================================================================\nimport pytest\n\n"
-            for c in existing_cases:
-                code_snippet = c.code.replace("import pytest\n", "") if "import pytest" in c.code else c.code
-                combined += f"\n{code_snippet.strip()}\n"
-            with open(test_file_path, "w", encoding="utf-8") as f:
-                f.write(combined)
+            is_jsts = primary_lang in ("typescript", "javascript", "react") or (project.framework or "").lower() in ("vitest", "jest", "react", "typescript", "javascript")
+            if is_jsts:
+                test_file_path = os.path.join(tests_dir, "auto_suite.test.ts")
+                combined = "// ====================================================================\n"
+                combined += "// TestBlind AI Auto-Generated Vitest Suite\n"
+                combined += "// ====================================================================\nimport { describe, it, expect } from 'vitest';\n\n"
+                for c in existing_cases:
+                    code_snippet = c.code.replace("import { describe, it, expect } from 'vitest';\n", "").strip()
+                    combined += f"\n{code_snippet}\n"
+                with open(test_file_path, "w", encoding="utf-8") as f:
+                    f.write(combined)
+            else:
+                test_file_path = os.path.join(tests_dir, "test_auto_generated.py")
+                combined = "# ====================================================================\n"
+                combined += "# TestBlind AI Auto-Generated Test Suite\n"
+                combined += "# ====================================================================\nimport pytest\n\n"
+                for c in existing_cases:
+                    code_snippet = c.code.replace("import pytest\n", "") if "import pytest" in c.code else c.code
+                    combined += f"\n{code_snippet.strip()}\n"
+                with open(test_file_path, "w", encoding="utf-8") as f:
+                    f.write(combined)
         else:
             await AutoTestGeneratorService.analyze_and_generate(
                 project_id=project.id,
@@ -287,9 +298,40 @@ async def _run_scan_pipeline(
     trigger: str,
     commit_hash: Optional[str],
     db: AsyncSession,
+    runner: Optional[str] = None,
 ) -> ScanJob:
     scan_dir = await ensure_project_workspace(db, project_id, organization_id)
-    summary = await TestDiscoveryService.run_mutation_scan_on_workspace(scan_dir, max_mutants=20)
+    files_meta = TestDiscoveryService.discover_source_and_test_files(scan_dir)
+    primary_lang = files_meta["language"]
+
+    # If user explicitly selected a runner/generator, prioritize its corresponding language
+    if runner and runner != "auto":
+        r_lower = runner.lower()
+        if r_lower in ("vitest", "react", "typescript"):
+            primary_lang = "typescript"
+        elif r_lower in ("jest", "javascript"):
+            primary_lang = "javascript"
+        elif r_lower in ("pytest", "python"):
+            primary_lang = "python"
+        elif r_lower in ("go", "testing"):
+            primary_lang = "go"
+
+        # Update project record framework if changed
+        try:
+            proj_q = select(Project).where(
+                Project.id == project_id,
+                Project.organization_id == organization_id,
+            )
+            proj = (await db.execute(proj_q)).scalar_one_or_none()
+            if proj and proj.framework != runner:
+                proj.framework = runner
+                await db.commit()
+        except Exception:
+            pass
+
+    summary = await TestDiscoveryService.run_mutation_scan_on_workspace(
+        scan_dir, max_mutants=20, language=primary_lang
+    )
 
     now = datetime.now(timezone.utc)
     scan_job = ScanJob(
@@ -415,6 +457,7 @@ async def trigger_scan_job(
         trigger=data.trigger,
         commit_hash=data.commit_hash,
         db=db,
+        runner=data.runner or data.framework,
     )
 
     # Submit to queue engine for operational fleet tracking
@@ -452,6 +495,7 @@ async def trigger_scan_job_sync(
         trigger=data.trigger,
         commit_hash=data.commit_hash,
         db=db,
+        runner=data.runner or data.framework,
     )
     return ScanJobRead.model_validate(scan_job)
 
@@ -543,6 +587,7 @@ async def synthesize_mutation_test(
     mutation_id: uuid.UUID,
     tenant: Annotated[TenantContext, Depends(require_role(RoleEnum.ENGINEER))],
     db: Annotated[AsyncSession, Depends(get_db)],
+    framework: Optional[str] = Query(None, description="Target test framework (e.g. vitest, jest, pytest)"),
 ) -> SynthesizeMutationResponse:
     mut_q = select(Mutation).where(
         Mutation.id == mutation_id,
@@ -600,8 +645,21 @@ async def synthesize_mutation_test(
         mutated_source=mutated_source,
     )
 
+    file_ext = Path(mutation.file_path).suffix.lower() if mutation.file_path else ""
+    mut_lang = "typescript" if file_ext in (".ts", ".tsx") else ("javascript" if file_ext in (".js", ".jsx") else "python")
+    if framework:
+        f_lower = framework.lower()
+        if f_lower in ("vitest", "typescript", "react"):
+            mut_lang = "typescript"
+        elif f_lower in ("jest", "javascript"):
+            mut_lang = "javascript"
+        elif f_lower in ("pytest", "python"):
+            mut_lang = "python"
+
     gap = LLMTestSynthesizer.explain_gap(source_code, mut_spec)
-    synthesized_test = await LLMTestSynthesizer.synthesize_killing_test_async(source_code, mut_spec, module_name=module_name)
+    synthesized_test = await LLMTestSynthesizer.synthesize_killing_test_async(
+        source_code, mut_spec, module_name=module_name, language=mut_lang
+    )
 
     # Perform dual-state validation
     outcome = await DualStateTestValidator.validate_candidate_test(
@@ -609,6 +667,7 @@ async def synthesize_mutation_test(
         mutated_source=mutated_source,
         candidate_test_code=synthesized_test,
         module_name=module_name,
+        language=mut_lang,
     )
 
     # Update mutation record

@@ -1,6 +1,8 @@
 import ast
 import copy
+import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 
@@ -72,14 +74,35 @@ class ASTMutationEngine:
         source_code: str,
         file_path: str = "solution.py",
         max_mutants: int = 50,
+        language: str = "auto",
     ) -> List[MutantSpec]:
         """
-        Parses Python source code into AST, walks the tree, and synthesizes candidate mutants
+        Parses source code into AST/syntax nodes and synthesizes candidate mutants
         across ROR, AOR, LCR, and BSR operators.
+        Supports Python AST and JavaScript/TypeScript/React token AST engines.
         """
+        lang_lower = (language or "auto").lower().strip()
+        is_jsts = (
+            lang_lower in ("typescript", "javascript", "react", "ts", "js", "tsx", "jsx")
+            or (lang_lower == "auto" and file_path.lower().endswith((".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs")))
+        )
+        if is_jsts:
+            return JSTSMutationEngine.generate_mutants_for_source(
+                source_code=source_code,
+                file_path=file_path,
+                max_mutants=max_mutants,
+            )
+
         try:
             tree = ast.parse(source_code)
         except SyntaxError as e:
+            # Fallback to JS/TS engine if auto-detected source contains JS/TS constructs
+            if lang_lower == "auto" and any(k in source_code for k in ("const ", "let ", "function ", "===", "=>", "export ")):
+                return JSTSMutationEngine.generate_mutants_for_source(
+                    source_code=source_code,
+                    file_path=file_path,
+                    max_mutants=max_mutants,
+                )
             raise ValueError(f"Syntax error parsing {file_path} at line {e.lineno}: {e.msg}")
 
         source_lines = source_code.splitlines()
@@ -353,3 +376,431 @@ class ASTMutationEngine:
                 m.is_equivalent = True
                 m.status = "equivalent"
                 m.description += " [Interactive CLI Routine / Cosmetic Output - Untestable via unit testing]"
+
+
+class JSTSMutationEngine:
+    """
+    Analyzes JavaScript, TypeScript, and React JSX/TSX source code and generates
+    systematic semantic mutations across ROR, AOR, LCR, and BSR operator catalogs.
+    Safely ignores string literals, comments, import statements, and JSX tags.
+    """
+
+    # ROR: ordered by length descending so === matches before ==, >= before >
+    ROR_OPERATORS = [
+        ("===", "!==", "Relational: strict equality (===) to strict inequality (!==)"),
+        ("!==", "===", "Relational: strict inequality (!==) to strict equality (===)"),
+        ("==", "!=", "Relational: equality (==) to inequality (!=)"),
+        ("!=", "==", "Relational: inequality (!=) to equality (==)"),
+        (">=", ">", "Relational: greater or equal (>=) to strictly greater (>)"),
+        ("<=", "<", "Relational: less or equal (<=) to strictly less (<)"),
+        (">", ">=", "Relational: strictly greater than (>) to greater or equal (>=)"),
+        ("<", "<=", "Relational: strictly less than (<) to less or equal (<=)"),
+    ]
+
+    # AOR: Arithmetic operators
+    AOR_OPERATORS = [
+        ("+", "-", "Arithmetic: addition (+) to subtraction (-)"),
+        ("-", "+", "Arithmetic: subtraction (-) to addition (+)"),
+        ("*", "/", "Arithmetic: multiplication (*) to division (/)"),
+        ("/", "*", "Arithmetic: division (/) to multiplication (*)"),
+        ("%", "*", "Arithmetic: modulo (%) to multiplication (*)"),
+    ]
+
+    # LCR: Logical operators
+    LCR_OPERATORS = [
+        ("&&", "||", "Logical: connector conjunction (&&) to disjunction (||)"),
+        ("||", "&&", "Logical: connector disjunction (||) to conjunction (&&)"),
+        ("??", "||", "Nullish coalescing: (??) to logical disjunction (||)"),
+    ]
+
+    @classmethod
+    def generate_mutants_for_source(
+        cls,
+        source_code: str,
+        file_path: str = "solution.ts",
+        max_mutants: int = 50,
+    ) -> List[MutantSpec]:
+        source_lines = source_code.splitlines()
+        mutants: List[MutantSpec] = []
+        mutant_idx = 0
+
+        # Precompute line comment and string literal masks
+        line_masks = cls._mask_lines(source_lines)
+
+        for line_no, (line_text, active_line) in enumerate(zip(source_lines, line_masks), start=1):
+            if len(mutants) >= max_mutants:
+                break
+
+            s = line_text.strip()
+            # Skip empty, comment-only, or import/export lines
+            if not s or s.startswith("//") or s.startswith("/*") or s.startswith("*"):
+                continue
+            if s.startswith("import ") or s.startswith("export type ") or s.startswith("export interface "):
+                continue
+
+            # 1. ROR Relational Operators
+            for orig_op, mut_op, desc in cls.ROR_OPERATORS:
+                if len(mutants) >= max_mutants:
+                    break
+                col_offset = 0
+                while col_offset < len(active_line):
+                    idx = active_line.find(orig_op, col_offset)
+                    if idx == -1:
+                        break
+
+                    if cls._is_subtoken_of_longer_op(active_line, idx, orig_op):
+                        col_offset = idx + len(orig_op)
+                        continue
+
+                    if cls._is_jsx_tag_bracket(line_text, idx, orig_op):
+                        col_offset = idx + len(orig_op)
+                        continue
+
+                    mutant_idx += 1
+                    mut_id = f"MUT-{file_path}-{line_no}-{mutant_idx}"
+
+                    mut_line = line_text[:idx] + mut_op + line_text[idx + len(orig_op):]
+                    mut_lines = list(source_lines)
+                    mut_lines[line_no - 1] = mut_line
+                    mut_source = "\n".join(mut_lines)
+
+                    is_valid = cls._validate_syntax(mut_source)
+                    is_equiv = cls._is_suspected_equivalent(line_text, orig_op, mut_op)
+
+                    mutants.append(
+                        MutantSpec(
+                            id=mut_id,
+                            file_path=file_path,
+                            line_number=line_no,
+                            col_offset=idx,
+                            operator="ROR",
+                            original_token=orig_op,
+                            mutated_token=mut_op,
+                            original_snippet=s,
+                            mutated_snippet=mut_line.strip(),
+                            description=desc,
+                            mutated_source=mut_source,
+                            is_valid=is_valid,
+                            is_equivalent=is_equiv,
+                            status="equivalent" if is_equiv else ("pending" if is_valid else "invalid"),
+                        )
+                    )
+
+                    col_offset = idx + len(orig_op)
+
+            # 2. LCR Logical Operators
+            for orig_op, mut_op, desc in cls.LCR_OPERATORS:
+                if len(mutants) >= max_mutants:
+                    break
+                col_offset = 0
+                while col_offset < len(active_line):
+                    idx = active_line.find(orig_op, col_offset)
+                    if idx == -1:
+                        break
+
+                    if cls._is_subtoken_of_longer_op(active_line, idx, orig_op):
+                        col_offset = idx + len(orig_op)
+                        continue
+
+                    mutant_idx += 1
+                    mut_id = f"MUT-{file_path}-{line_no}-{mutant_idx}"
+
+                    mut_line = line_text[:idx] + mut_op + line_text[idx + len(orig_op):]
+                    mut_lines = list(source_lines)
+                    mut_lines[line_no - 1] = mut_line
+                    mut_source = "\n".join(mut_lines)
+
+                    is_valid = cls._validate_syntax(mut_source)
+                    is_equiv = cls._is_suspected_equivalent(line_text, orig_op, mut_op)
+
+                    mutants.append(
+                        MutantSpec(
+                            id=mut_id,
+                            file_path=file_path,
+                            line_number=line_no,
+                            col_offset=idx,
+                            operator="LCR",
+                            original_token=orig_op,
+                            mutated_token=mut_op,
+                            original_snippet=s,
+                            mutated_snippet=mut_line.strip(),
+                            description=desc,
+                            mutated_source=mut_source,
+                            is_valid=is_valid,
+                            is_equivalent=is_equiv,
+                            status="equivalent" if is_equiv else ("pending" if is_valid else "invalid"),
+                        )
+                    )
+
+                    col_offset = idx + len(orig_op)
+
+            # 3. AOR Arithmetic Operators
+            for orig_op, mut_op, desc in cls.AOR_OPERATORS:
+                if len(mutants) >= max_mutants:
+                    break
+                col_offset = 0
+                while col_offset < len(active_line):
+                    idx = active_line.find(orig_op, col_offset)
+                    if idx == -1:
+                        break
+
+                    if cls._is_compound_arithmetic_op(active_line, idx, orig_op):
+                        col_offset = idx + len(orig_op)
+                        continue
+
+                    if cls._is_jsx_tag_bracket(line_text, idx, orig_op):
+                        col_offset = idx + len(orig_op)
+                        continue
+
+                    mutant_idx += 1
+                    mut_id = f"MUT-{file_path}-{line_no}-{mutant_idx}"
+
+                    mut_line = line_text[:idx] + mut_op + line_text[idx + len(orig_op):]
+                    mut_lines = list(source_lines)
+                    mut_lines[line_no - 1] = mut_line
+                    mut_source = "\n".join(mut_lines)
+
+                    is_valid = cls._validate_syntax(mut_source)
+                    is_equiv = cls._is_suspected_equivalent(line_text, orig_op, mut_op)
+
+                    mutants.append(
+                        MutantSpec(
+                            id=mut_id,
+                            file_path=file_path,
+                            line_number=line_no,
+                            col_offset=idx,
+                            operator="AOR",
+                            original_token=orig_op,
+                            mutated_token=mut_op,
+                            original_snippet=s,
+                            mutated_snippet=mut_line.strip(),
+                            description=desc,
+                            mutated_source=mut_source,
+                            is_valid=is_valid,
+                            is_equivalent=is_equiv,
+                            status="equivalent" if is_equiv else ("pending" if is_valid else "invalid"),
+                        )
+                    )
+
+                    col_offset = idx + len(orig_op)
+
+            # 4. BSR Boundary Shift: boolean constants
+            for bool_match in re.finditer(r'\b(true|false)\b', active_line):
+                if len(mutants) >= max_mutants:
+                    break
+                orig_bool = bool_match.group(1)
+                mut_bool = "false" if orig_bool == "true" else "true"
+                idx = bool_match.start()
+
+                mutant_idx += 1
+                mut_id = f"MUT-{file_path}-{line_no}-{mutant_idx}"
+
+                mut_line = line_text[:idx] + mut_bool + line_text[idx + len(orig_bool):]
+                mut_lines = list(source_lines)
+                mut_lines[line_no - 1] = mut_line
+                mut_source = "\n".join(mut_lines)
+
+                is_valid = cls._validate_syntax(mut_source)
+                is_equiv = cls._is_suspected_equivalent(line_text, orig_bool, mut_bool)
+
+                mutants.append(
+                    MutantSpec(
+                        id=mut_id,
+                        file_path=file_path,
+                        line_number=line_no,
+                        col_offset=idx,
+                        operator="BSR",
+                        original_token=orig_bool,
+                        mutated_token=mut_bool,
+                        original_snippet=s,
+                        mutated_snippet=mut_line.strip(),
+                        description=f"Boundary Shift: boolean flag {orig_bool} inverted to {mut_bool}",
+                        mutated_source=mut_source,
+                        is_valid=is_valid,
+                        is_equivalent=is_equiv,
+                        status="equivalent" if is_equiv else ("pending" if is_valid else "invalid"),
+                    )
+                )
+
+            # 5. BSR Boundary Shift: integer constants
+            for int_match in re.finditer(r'(?<![a-zA-Z0-9_$.])\b(\d+)\b(?![a-zA-Z0-9_$.])', active_line):
+                if len(mutants) >= max_mutants:
+                    break
+                orig_int_str = int_match.group(1)
+                val = int(orig_int_str)
+                if val > 100000:
+                    continue
+                mut_val = val + 1 if val == 0 else val - 1
+                mut_int_str = str(mut_val)
+                idx = int_match.start()
+
+                mutant_idx += 1
+                mut_id = f"MUT-{file_path}-{line_no}-{mutant_idx}"
+
+                mut_line = line_text[:idx] + mut_int_str + line_text[idx + len(orig_int_str):]
+                mut_lines = list(source_lines)
+                mut_lines[line_no - 1] = mut_line
+                mut_source = "\n".join(mut_lines)
+
+                is_valid = cls._validate_syntax(mut_source)
+                is_equiv = cls._is_suspected_equivalent(line_text, orig_int_str, mut_int_str)
+
+                mutants.append(
+                    MutantSpec(
+                        id=mut_id,
+                        file_path=file_path,
+                        line_number=line_no,
+                        col_offset=idx,
+                        operator="BSR",
+                        original_token=orig_int_str,
+                        mutated_token=mut_int_str,
+                        original_snippet=s,
+                        mutated_snippet=mut_line.strip(),
+                        description=f"Boundary Shift: integer constant {orig_int_str} shifted to {mut_int_str}",
+                        mutated_source=mut_source,
+                        is_valid=is_valid,
+                        is_equivalent=is_equiv,
+                        status="equivalent" if is_equiv else ("pending" if is_valid else "invalid"),
+                    )
+                )
+
+        return mutants
+
+    @classmethod
+    def _mask_lines(cls, source_lines: List[str]) -> List[str]:
+        full_text = "\n".join(source_lines)
+        masked_chars = list(full_text)
+
+        # 1. Multi-line comments /* ... */
+        for m in re.finditer(r'/\*[\s\S]*?\*/', full_text):
+            for i in range(m.start(), m.end()):
+                if full_text[i] != '\n':
+                    masked_chars[i] = ' '
+
+        # 2. Single-line comments // ...
+        for m in re.finditer(r'//[^\n]*', "".join(masked_chars)):
+            for i in range(m.start(), m.end()):
+                masked_chars[i] = ' '
+
+        # 3. String literals: "...", '...', `...`
+        temp_str = "".join(masked_chars)
+        for m in re.finditer(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|`(?:\\.|[^`\\])*`', temp_str):
+            start, end = m.start(), m.end()
+            for i in range(start + 1, end - 1):
+                if full_text[i] != '\n':
+                    masked_chars[i] = ' '
+
+        masked_full = "".join(masked_chars)
+        return masked_full.split("\n")
+
+    @classmethod
+    def _is_subtoken_of_longer_op(cls, line: str, idx: int, op: str) -> bool:
+        prev_char = line[idx - 1] if idx > 0 else ""
+        next_char = line[idx + len(op)] if idx + len(op) < len(line) else ""
+
+        if op == "==":
+            return prev_char in ("!", "=") or next_char == "="
+        if op == "!=":
+            return next_char == "="
+        if op == ">":
+            return prev_char in ("=", "-") or next_char in ("=", ">")
+        if op == "<":
+            return next_char in ("=", "<")
+        if op in (">=", "<="):
+            return next_char == "="
+        if op in ("&&", "||"):
+            return next_char == "="
+        return False
+
+    @classmethod
+    def _is_compound_arithmetic_op(cls, line: str, idx: int, op: str) -> bool:
+        prev_char = line[idx - 1] if idx > 0 else ""
+        next_char = line[idx + len(op)] if idx + len(op) < len(line) else ""
+
+        if op == "+":
+            return prev_char == "+" or next_char in ("+", "=")
+        if op == "-":
+            return prev_char == "-" or next_char in ("-", "=", ">")
+        if op == "*":
+            return prev_char == "*" or next_char in ("*", "=", "/")
+        if op == "/":
+            return prev_char == "*" or next_char in ("/", "*", "=")
+        if op == "%":
+            return next_char == "="
+        return False
+
+    @classmethod
+    def _is_jsx_tag_bracket(cls, line: str, idx: int, op: str) -> bool:
+        if op == "<":
+            next_char = line[idx + 1] if idx + 1 < len(line) else ""
+            return bool(re.match(r'[a-zA-Z/_!]', next_char))
+        if op == ">":
+            prev_char = line[idx - 1] if idx > 0 else ""
+            if prev_char == "/":
+                return True
+            # Preceded by tag identifier or quote and closing a tag
+            prefix = line[:idx]
+            last_open = prefix.rfind("<")
+            if last_open != -1:
+                tag_content = prefix[last_open + 1:].strip()
+                if tag_content and re.match(r'^[a-zA-Z/]', tag_content):
+                    return True
+        if op == "/":
+            prev_char = line[idx - 1] if idx > 0 else ""
+            next_char = line[idx + 1] if idx + 1 < len(line) else ""
+            if prev_char == "<" or next_char == ">":
+                return True
+            prefix = line[:idx]
+            last_open = prefix.rfind("<")
+            last_close = prefix.rfind(">")
+            if last_open != -1 and last_open > last_close:
+                return True
+        return False
+
+    @classmethod
+    def _validate_syntax(cls, source_code: str) -> bool:
+        """Lightweight delimiter balance validation for candidate mutations."""
+        stack = []
+        matching = {')': '(', '}': '{', ']': '['}
+        in_dquote = False
+        in_squote = False
+        in_tick = False
+        escaped = False
+
+        for char in source_code:
+            if escaped:
+                escaped = False
+                continue
+            if char == '\\':
+                escaped = True
+                continue
+
+            if char == '"' and not in_squote and not in_tick:
+                in_dquote = not in_dquote
+                continue
+            if char == "'" and not in_dquote and not in_tick:
+                in_squote = not in_squote
+                continue
+            if char == '`' and not in_dquote and not in_squote:
+                in_tick = not in_tick
+                continue
+
+            if in_dquote or in_squote or in_tick:
+                continue
+
+            if char in ('(', '{', '['):
+                stack.append(char)
+            elif char in (')', '}', ']'):
+                if not stack or stack[-1] != matching[char]:
+                    return False
+                stack.pop()
+
+        return len(stack) == 0 and not (in_dquote or in_squote or in_tick)
+
+    @classmethod
+    def _is_suspected_equivalent(cls, line_text: str, orig: str, mut: str) -> bool:
+        if any(k in line_text for k in ("console.", "process.exit", "window.alert", "alert(")):
+            return True
+        if "true || false" in line_text or "false || true" in line_text:
+            return True
+        return False

@@ -153,3 +153,111 @@ async def test_direct_auto_generate_endpoint_and_idempotency(client: AsyncClient
     assert gen_data2["test_cases_created"] == 0
     assert gen_data2["scenarios_created"] == 0
     assert "already has" in gen_data2["message"]
+
+
+@pytest.mark.asyncio
+async def test_typescript_project_auto_generation_generates_vitest(client: AsyncClient, test_user_headers: dict):
+    """
+    Verifies that a TypeScript / React repository automatically generates Vitest test cases
+    instead of Python pytest suites.
+    """
+    # 1. Create a project
+    create_resp = await client.post(
+        "/api/v1/projects",
+        json={"name": "Cyberintelix Frontend", "framework": "vitest"},
+        headers=test_user_headers,
+    )
+    assert create_resp.status_code == 201
+    project_id = create_resp.json()["id"]
+
+    # 2. Build TypeScript / React project zip
+    ts_code = (
+        "export function sanitizeInput(input: string): string {\n"
+        "  if (!input) return '';\n"
+        "  return input.trim().replace(/<[^>]*>/g, '');\n"
+        "}\n\n"
+        "export const validateEmail = (email: string): boolean => {\n"
+        "  return email.includes('@') && email.includes('.');\n"
+        "};\n"
+    )
+    zip_bytes = make_zip_archive({
+        "src/utils.ts": ts_code,
+        "package.json": '{"name": "cyberintelix", "scripts": {"test": "vitest"}}\n',
+    })
+
+    # 3. Upload zip with auto-generation enabled
+    files = {"file": ("cyberintelix.zip", zip_bytes, "application/zip")}
+    upload_resp = await client.post(
+        f"/api/v1/projects/{project_id}/repositories/upload-zip?auto_generate_if_no_tests=true",
+        files=files,
+        headers=test_user_headers,
+    )
+    assert upload_resp.status_code == 201
+    data = upload_resp.json()
+
+    assert data["auto_generated_tests"] is True
+    assert data["generated_test_cases_count"] >= 2
+
+    # 4. Fetch test cases and verify Vitest assertions
+    tc_resp = await client.get(
+        f"/api/v1/projects/{project_id}/test-cases",
+        headers=test_user_headers,
+    )
+    assert tc_resp.status_code == 200
+    test_cases = tc_resp.json()
+    assert len(test_cases) >= 2
+
+    # Verify no pytest imports, verify Vitest imports/syntax
+    for tc in test_cases:
+        code = tc.get("code", "")
+        assert "import pytest" not in code
+        assert "describe(" in code or "it(" in code or "expect(" in code
+        assert "vitest" in code.lower()
+        assert tc.get("framework") == "vitest"
+
+    # 5. Verify test scenarios contain Vitest runner
+    sc_resp = await client.get(
+        f"/api/v1/projects/{project_id}/test-scenarios",
+        headers=test_user_headers,
+    )
+    assert sc_resp.status_code == 200
+    scenarios = sc_resp.json()
+    assert len(scenarios) >= 2
+    for sc in scenarios:
+        assert "vitest" in sc.get("name", "").lower() or "vitest" in sc.get("description", "").lower()
+
+    # 6. Execute test case in sandbox via POST /api/v1/test-cases/{id}/run
+    first_tc = test_cases[0]
+    run_resp = await client.post(
+        f"/api/v1/test-cases/{first_tc['id']}/run",
+        headers=test_user_headers,
+    )
+    assert run_resp.status_code == 200
+    run_data = run_resp.json()
+    assert run_data["exit_code"] == 0
+    assert run_data["status"] == "verified"
+    assert "SyntaxError" not in run_data.get("stderr", "")
+    assert "SyntaxError" not in run_data.get("stdout", "")
+    assert "PASS" in run_data.get("stdout", "")
+
+    # 7. Test exporting the test case with correct comment syntax and filename
+    export_resp = await client.get(
+        f"/api/v1/test-cases/{first_tc['id']}/export",
+        headers=test_user_headers,
+    )
+    assert export_resp.status_code == 200
+    assert export_resp.text.startswith("//")
+    assert "import { describe, it, expect } from 'vitest'" in export_resp.text
+    assert ".ts" in export_resp.headers.get("content-disposition", "")
+
+    # 8. Test exporting the entire project suite (verifies project.slug fix)
+    suite_export_resp = await client.get(
+        f"/api/v1/projects/{project_id}/test-cases/export",
+        headers=test_user_headers,
+    )
+    assert suite_export_resp.status_code == 200
+    assert suite_export_resp.text.startswith("//")
+    assert "Unified Regression Suite Export" in suite_export_resp.text
+    assert ".ts" in suite_export_resp.headers.get("content-disposition", "")
+
+

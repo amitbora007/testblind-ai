@@ -41,3 +41,8 @@ class RepoRead(BaseModel):
     default_branch: str
     last_synced_at: Optional[datetime] = None
     created_at: datetime
+
+
+class ProjectDeleteResponse(BaseModel):
+    message: str
+    project_id: uuid.UUID

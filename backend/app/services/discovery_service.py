@@ -59,32 +59,77 @@ class TestDiscoveryService:
     }
 
     @classmethod
-    def discover_python_files(cls, workspace_dir: str) -> Dict[str, List[str]]:
+    def discover_source_and_test_files(cls, workspace_dir: str, language: str = "auto") -> Dict[str, Any]:
+        """
+        Discovers source and test files across Python (.py) and JavaScript / TypeScript / React (.js, .jsx, .ts, .tsx).
+        Automatically infers primary codebase language when language is 'auto'.
+        """
         source_files: List[str] = []
         test_files: List[str] = []
-
         workspace_path = Path(workspace_dir)
+
+        py_files: List[str] = []
+        py_tests: List[str] = []
+        js_files: List[str] = []
+        js_tests: List[str] = []
+
         for root, dirs, files in os.walk(workspace_dir):
             dirs[:] = [d for d in dirs if d not in cls.EXCLUDED_DIRS]
 
             for file in files:
-                if file.endswith(".py"):
-                    full_path = Path(root) / file
-                    rel_path = str(full_path.relative_to(workspace_path))
+                full_path = Path(root) / file
+                rel_path = str(full_path.relative_to(workspace_path))
+                ext = full_path.suffix.lower()
 
-                    if (
-                        file.startswith("test_")
-                        or file.endswith("_test.py")
-                        or "tests/" in rel_path
-                        or "test/" in rel_path
-                    ):
-                        test_files.append(rel_path)
+                if ext == ".py":
+                    if file.startswith("test_") or file.endswith("_test.py") or "tests/" in rel_path or "test/" in rel_path:
+                        py_tests.append(rel_path)
                     else:
-                        source_files.append(rel_path)
+                        py_files.append(rel_path)
+                elif ext in (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"):
+                    if ext == ".ts" and file.endswith(".d.ts"):
+                        continue
+                    if any(file.endswith(sfx) for sfx in (".test.ts", ".test.tsx", ".test.js", ".test.jsx", ".spec.ts", ".spec.tsx", ".spec.js", ".spec.jsx")) or "__tests__/" in rel_path or "tests/" in rel_path or "test/" in rel_path:
+                        js_tests.append(rel_path)
+                    elif not any(file.startswith(cfg) for cfg in ("vite.config", "vitest.config", "jest.config", "tailwind.config", "next.config", "postcss.config", "eslint")):
+                        js_files.append(rel_path)
+
+        lang_lower = (language or "auto").lower().strip()
+        has_package_json = (workspace_path / "package.json").exists()
+
+        if lang_lower in ("typescript", "javascript", "react", "ts", "js"):
+            detected_lang = "typescript" if (lang_lower in ("typescript", "react", "ts") or any(f.endswith((".ts", ".tsx")) for f in (js_files + js_tests))) else "javascript"
+            source_files = js_files
+            test_files = js_tests
+        elif lang_lower == "python":
+            detected_lang = "python"
+            source_files = py_files
+            test_files = py_tests
+        else:
+            total_jsts = len(js_files) + len(js_tests)
+            total_py = len(py_files) + len(py_tests)
+
+            if total_jsts > total_py or (total_jsts > 0 and has_package_json):
+                detected_lang = "typescript" if any(f.endswith((".ts", ".tsx")) for f in (js_files + js_tests)) else "javascript"
+                source_files = js_files
+                test_files = js_tests
+            else:
+                detected_lang = "python"
+                source_files = py_files
+                test_files = py_tests
 
         return {
+            "language": detected_lang,
             "source_files": sorted(source_files),
             "test_files": sorted(test_files),
+        }
+
+    @classmethod
+    def discover_python_files(cls, workspace_dir: str) -> Dict[str, List[str]]:
+        res = cls.discover_source_and_test_files(workspace_dir, "python")
+        return {
+            "source_files": res["source_files"],
+            "test_files": res["test_files"],
         }
 
     @classmethod
@@ -93,8 +138,24 @@ class TestDiscoveryService:
         workspace_dir: str,
         test_cmd: Optional[List[str]] = None,
         timeout_seconds: int = 30,
+        language: str = "auto",
     ) -> BaselineTestResult:
-        cmd = test_cmd or [sys.executable, "-m", "pytest", "-v", "--tb=short"]
+        if test_cmd:
+            cmd = test_cmd
+        else:
+            files_meta = cls.discover_source_and_test_files(workspace_dir, language=language)
+            lang = files_meta["language"]
+            if lang == "python":
+                cmd = [sys.executable, "-m", "pytest", "-v", "--tb=short"]
+            else:
+                pkg_json = Path(workspace_dir) / "package.json"
+                if (Path(workspace_dir) / "vitest.config.ts").exists() or (Path(workspace_dir) / "vitest.config.js").exists():
+                    cmd = ["npx", "vitest", "run"]
+                elif pkg_json.exists():
+                    cmd = ["npm", "test", "--", "--runInBand"]
+                else:
+                    cmd = ["node", "--test"]
+
         cfg = ExecutionSandboxConfig(
             wall_timeout_seconds=timeout_seconds,
             custom_env={"PYTHONPATH": f".:{workspace_dir}", "COLUMNS": "80", "LINES": "24"},
@@ -127,6 +188,7 @@ class TestDiscoveryService:
         mutated_source: str,
         test_cmd: Optional[List[str]] = None,
         timeout_seconds: int = 10,
+        language: str = "auto",
     ) -> Tuple[str, Optional[str]]:
         target_file = Path(workspace_dir) / file_rel_path
         if not target_file.exists():
@@ -134,12 +196,22 @@ class TestDiscoveryService:
 
         original_content = target_file.read_text(encoding="utf-8")
         if not test_cmd:
-            from app.services.impact_analysis import TestImpactAnalyzer
-            impacted = TestImpactAnalyzer.get_impacted_tests(workspace_dir, file_rel_path)
-            if impacted:
-                cmd = [sys.executable, "-m", "pytest", "-v", "--tb=short"] + impacted
+            is_jsts = file_rel_path.endswith((".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs")) or language in ("typescript", "javascript", "react")
+            if is_jsts:
+                pkg_json = Path(workspace_dir) / "package.json"
+                if (Path(workspace_dir) / "vitest.config.ts").exists() or (Path(workspace_dir) / "vitest.config.js").exists():
+                    cmd = ["npx", "vitest", "run"]
+                elif pkg_json.exists():
+                    cmd = ["npm", "test", "--", "--runInBand"]
+                else:
+                    cmd = ["node", "--test"]
             else:
-                cmd = [sys.executable, "-m", "pytest", "-v", "--tb=short"]
+                from app.services.impact_analysis import TestImpactAnalyzer
+                impacted = TestImpactAnalyzer.get_impacted_tests(workspace_dir, file_rel_path)
+                if impacted:
+                    cmd = [sys.executable, "-m", "pytest", "-v", "--tb=short"] + impacted
+                else:
+                    cmd = [sys.executable, "-m", "pytest", "-v", "--tb=short"]
         else:
             cmd = test_cmd
 
@@ -172,10 +244,15 @@ class TestDiscoveryService:
         workspace_dir: str,
         max_mutants: int = 50,
         test_cmd: Optional[List[str]] = None,
+        language: str = "auto",
     ) -> ScanExecutionSummary:
         start_time = time.perf_counter()
 
-        baseline = await cls.run_baseline_tests(workspace_dir, test_cmd=test_cmd)
+        files_meta = cls.discover_source_and_test_files(workspace_dir, language=language)
+        primary_lang = files_meta["language"]
+        source_files = files_meta["source_files"]
+
+        baseline = await cls.run_baseline_tests(workspace_dir, test_cmd=test_cmd, language=primary_lang)
         if not baseline.passed:
             duration = round(time.perf_counter() - start_time, 2)
             return ScanExecutionSummary(
@@ -191,9 +268,6 @@ class TestDiscoveryService:
                 mutants=[],
             )
 
-        files = cls.discover_python_files(workspace_dir)
-        source_files = files["source_files"]
-
         all_mutants: List[MutantSpec] = []
         for src_file in source_files:
             if len(all_mutants) >= max_mutants:
@@ -204,6 +278,7 @@ class TestDiscoveryService:
                 source_code=content,
                 file_path=src_file,
                 max_mutants=max_mutants - len(all_mutants),
+                language=primary_lang,
             )
             all_mutants.extend(mutants)
 
@@ -229,6 +304,7 @@ class TestDiscoveryService:
                 file_rel_path=mutant.file_path,
                 mutated_source=mutant.mutated_source,
                 test_cmd=test_cmd,
+                language=primary_lang,
             )
             mutant.status = status
             mutant.killing_test_name = killing_test
@@ -267,8 +343,8 @@ class TestDiscoveryService:
     def _parse_pytest_counts(cls, stdout: str) -> Tuple[int, int, int]:
         passed = 0
         failed = 0
-        total = 0
 
+        # Pytest formats
         m_pass = re.search(r"(\d+)\s+passed", stdout)
         if m_pass:
             passed = int(m_pass.group(1))
@@ -277,12 +353,21 @@ class TestDiscoveryService:
         if m_fail:
             failed = int(m_fail.group(1))
 
+        # Vitest / Jest formats (e.g. Tests: 2 passed, 1 failed, 3 total)
+        m_v_pass = re.search(r"(\d+)\s+passed", stdout)
+        m_v_fail = re.search(r"(\d+)\s+failed", stdout)
+        if not m_pass and m_v_pass:
+            passed = int(m_v_pass.group(1))
+        if not m_fail and m_v_fail:
+            failed = int(m_v_fail.group(1))
+
         total = passed + failed
         return total, passed, failed
 
     @classmethod
     def _extract_killing_test_name(cls, stdout: str) -> Optional[str]:
         for line in stdout.splitlines():
+            # Pytest format
             if line.startswith("FAILED ") or " FAILED" in line:
                 parts = line.strip().split()
                 for p in parts:
@@ -290,4 +375,10 @@ class TestDiscoveryService:
                         return p.split("::")[-1]
                     elif "test_" in p:
                         return p
+            # Vitest / Jest format (e.g. FAIL src/test.ts > testName, or ✕ test name)
+            if "FAIL " in line or "✕ " in line or "× " in line:
+                cleaned = line.replace("FAIL", "").replace("✕", "").replace("×", "").strip()
+                if ">" in cleaned:
+                    return cleaned.split(">")[-1].strip()
+                return cleaned.split()[-1] if cleaned else "assertion_failure"
         return "assertion_failure"
