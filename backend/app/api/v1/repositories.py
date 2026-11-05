@@ -1,4 +1,5 @@
 import os
+import tempfile
 import uuid
 from typing import Annotated, List
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
@@ -58,18 +59,34 @@ async def upload_repository_zip(
             detail=f"Unsupported file format ({filename}). Only standard .zip archives are supported.",
         )
 
-    # 3. Read content into memory with size check
-    archive_bytes = await file.read()
-    if len(archive_bytes) == 0:
+    # 3. Stream content to temporary file with rolling size check
+    chunk_size = 1024 * 1024  # 1 MB
+    total_bytes = 0
+    with tempfile.NamedTemporaryFile(prefix="upload_", suffix=".zip", delete=False) as tmp_file:
+        tmp_upload_path = tmp_file.name
+        try:
+            while True:
+                chunk = await file.read(chunk_size)
+                if not chunk:
+                    break
+                total_bytes += len(chunk)
+                if total_bytes > settings.UPLOAD_MAX_SIZE_BYTES:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Uploaded file exceeds maximum limit of {settings.UPLOAD_MAX_SIZE_BYTES // (1024 * 1024)} MB.",
+                    )
+                tmp_file.write(chunk)
+        except Exception:
+            if os.path.exists(tmp_upload_path):
+                os.unlink(tmp_upload_path)
+            raise
+
+    if total_bytes == 0:
+        if os.path.exists(tmp_upload_path):
+            os.unlink(tmp_upload_path)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Uploaded file is empty (0 bytes).",
-        )
-
-    if len(archive_bytes) > settings.UPLOAD_MAX_SIZE_BYTES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Uploaded file exceeds maximum limit of {settings.UPLOAD_MAX_SIZE_BYTES // (1024 * 1024)} MB.",
         )
 
     # 4. Allocate isolated tenant scratch directory
@@ -79,13 +96,52 @@ async def upload_repository_zip(
         repository_id=str(repo_id),
     )
 
-    # 5. Extract with strict Zip Slip & Zip Bomb defenses
+    # 5. Extract with strict Zip Slip & Zip Bomb defenses and guarantee cleanup on failure
     try:
-        extracted_files = SafeArchiveExtractor.inspect_and_extract(
-            archive_bytes=archive_bytes,
-            destination_dir=str(scratch_dir),
-            max_upload_size=settings.UPLOAD_MAX_SIZE_BYTES,
+        try:
+            extracted_files = SafeArchiveExtractor.inspect_and_extract(
+                archive_bytes=tmp_upload_path,
+                destination_dir=str(scratch_dir),
+                max_upload_size=settings.UPLOAD_MAX_SIZE_BYTES,
+            )
+        finally:
+            if os.path.exists(tmp_upload_path):
+                os.unlink(tmp_upload_path)
+
+        # 6. Analyze project structure, language, and test runners
+        try:
+            structure = ProjectStructureDetector.analyze(str(scratch_dir))
+        except Exception:
+            structure = None
+
+        detected_lang = structure.primary_language if structure else "unknown"
+        detected_runner = structure.detected_test_runner if structure else "custom"
+        suggested_cmd = structure.suggested_test_command if structure else "make test"
+        detected_langs = structure.detected_languages if structure else []
+        total_files = structure.total_files if structure else len(extracted_files)
+        source_files = structure.source_files if structure else 0
+        test_files = structure.test_files if structure else 0
+        config_files = structure.config_files if structure else []
+        manifest = structure.file_manifest if structure else extracted_files[:50]
+
+        # 7. Persist repository record
+        repo = Repository(
+            id=repo_id,
+            project_id=project.id,
+            organization_id=tenant.organization_id,
+            repo_type="zip",
+            repo_url=f"upload://{filename}",
+            default_branch="snapshot",
+            zip_artifact_path=str(scratch_dir),
         )
+        db.add(repo)
+
+        # Update project framework if auto-detected
+        if detected_runner and detected_runner != "custom":
+            project.framework = detected_runner
+
+        await db.commit()
+        await db.refresh(repo)
     except ZipSlipSecurityError as e:
         RetentionManager.purge_repository_scratch(str(tenant.organization_id), str(repo_id))
         raise HTTPException(
@@ -104,41 +160,9 @@ async def upload_repository_zip(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Archive validation failure: {str(e)}",
         )
-
-    # 6. Analyze project structure, language, and test runners
-    try:
-        structure = ProjectStructureDetector.analyze(str(scratch_dir))
-    except Exception as e:
-        structure = None
-
-    detected_lang = structure.primary_language if structure else "unknown"
-    detected_runner = structure.detected_test_runner if structure else "custom"
-    suggested_cmd = structure.suggested_test_command if structure else "make test"
-    detected_langs = structure.detected_languages if structure else []
-    total_files = structure.total_files if structure else len(extracted_files)
-    source_files = structure.source_files if structure else 0
-    test_files = structure.test_files if structure else 0
-    config_files = structure.config_files if structure else []
-    manifest = structure.file_manifest if structure else extracted_files[:50]
-
-    # 7. Persist repository record
-    repo = Repository(
-        id=repo_id,
-        project_id=project.id,
-        organization_id=tenant.organization_id,
-        repo_type="zip",
-        repo_url=f"upload://{filename}",
-        default_branch="snapshot",
-        zip_artifact_path=str(scratch_dir),
-    )
-    db.add(repo)
-
-    # Update project framework if auto-detected
-    if detected_runner and detected_runner != "custom":
-        project.framework = detected_runner
-
-    await db.commit()
-    await db.refresh(repo)
+    except Exception:
+        RetentionManager.purge_repository_scratch(str(tenant.organization_id), str(repo_id))
+        raise
 
     # Automatically generate test cases and scenarios if no tests were present
     auto_gen_ran = False
@@ -174,7 +198,7 @@ async def upload_repository_zip(
         project_id=project.id,
         repo_type="zip",
         filename=filename,
-        file_size_bytes=len(archive_bytes),
+        file_size_bytes=total_bytes,
         detected_language=detected_lang,
         detected_languages=detected_langs,
         detected_test_runner=detected_runner,

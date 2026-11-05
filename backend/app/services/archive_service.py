@@ -5,7 +5,9 @@ import time
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import BinaryIO, Dict, List, Optional, Set, Tuple, Union
+
+from app.core.config import settings
 
 
 class ArchiveSecurityError(Exception):
@@ -67,24 +69,51 @@ class SafeArchiveExtractor:
     @classmethod
     def inspect_and_extract(
         cls,
-        archive_bytes: bytes,
+        archive_bytes: Union[bytes, str, Path, BinaryIO],
         destination_dir: str,
         max_upload_size: int = 100 * 1024 * 1024,
     ) -> List[str]:
         """
         Validate and unpack archive into destination_dir with strict path traversal defenses.
+        Supports in-memory bytes, file paths, or binary streams.
         Returns a list of extracted relative file paths.
         """
-        if len(archive_bytes) > max_upload_size:
-            raise ArchiveSecurityError(
-                f"Archive size ({len(archive_bytes)} bytes) exceeds maximum limit of {max_upload_size} bytes."
-            )
-
-        cls.validate_magic_bytes(archive_bytes)
+        if isinstance(archive_bytes, (str, Path)):
+            archive_path = Path(archive_bytes)
+            archive_size = archive_path.stat().st_size
+            if archive_size > max_upload_size:
+                raise ArchiveSecurityError(
+                    f"Archive size ({archive_size} bytes) exceeds maximum limit of {max_upload_size} bytes."
+                )
+            with open(archive_path, "rb") as f:
+                cls.validate_magic_bytes(f.read(4))
+            zip_target: Union[str, io.BytesIO, BinaryIO] = str(archive_path)
+            compressed_size = max(archive_size, 1)
+        elif hasattr(archive_bytes, "read") and hasattr(archive_bytes, "seek"):
+            archive_bytes.seek(0, os.SEEK_END)
+            archive_size = archive_bytes.tell()
+            archive_bytes.seek(0)
+            if archive_size > max_upload_size:
+                raise ArchiveSecurityError(
+                    f"Archive size ({archive_size} bytes) exceeds maximum limit of {max_upload_size} bytes."
+                )
+            header = archive_bytes.read(4)
+            archive_bytes.seek(0)
+            cls.validate_magic_bytes(header)
+            zip_target = archive_bytes
+            compressed_size = max(archive_size, 1)
+        else:
+            raw_bytes = bytes(archive_bytes)
+            if len(raw_bytes) > max_upload_size:
+                raise ArchiveSecurityError(
+                    f"Archive size ({len(raw_bytes)} bytes) exceeds maximum limit of {max_upload_size} bytes."
+                )
+            cls.validate_magic_bytes(raw_bytes)
+            zip_target = io.BytesIO(raw_bytes)
+            compressed_size = max(len(raw_bytes), 1)
 
         try:
-            zip_buffer = io.BytesIO(archive_bytes)
-            with zipfile.ZipFile(zip_buffer, "r") as zf:
+            with zipfile.ZipFile(zip_target, "r") as zf:
                 # 1. Pre-extraction safety audit
                 infolist = zf.infolist()
                 if len(infolist) > cls.MAX_FILES_COUNT:
@@ -93,8 +122,6 @@ class SafeArchiveExtractor:
                     )
 
                 total_uncompressed = 0
-                compressed_size = max(len(archive_bytes), 1)
-
                 dest_abs = os.path.abspath(destination_dir)
                 os.makedirs(dest_abs, exist_ok=True)
 
@@ -315,7 +342,7 @@ class ProjectStructureDetector:
 class RetentionManager:
     """Manages ephemeral uploaded archives and directory lifecycle."""
 
-    BASE_STORAGE_PATH = Path("storage/tenants")
+    BASE_STORAGE_PATH = Path(settings.STORAGE_BASE_DIR)
 
     @classmethod
     def get_repo_storage_path(cls, organization_id: str, repository_id: str) -> Path:

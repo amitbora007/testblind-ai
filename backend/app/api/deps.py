@@ -98,9 +98,11 @@ async def get_tenant_context(
     )
     if target_org_id:
         query = query.where(UserMembership.organization_id == target_org_id)
+    else:
+        query = query.order_by(UserMembership.created_at.asc())
 
     result = await db.execute(query)
-    membership = result.scalar_one_or_none()
+    membership = result.scalars().first()
 
     if not membership:
         if target_org_id:
@@ -160,8 +162,10 @@ async def get_optional_tenant_context(
     )
     if target_org_id:
         mem_query = mem_query.where(UserMembership.organization_id == target_org_id)
+    else:
+        mem_query = mem_query.order_by(UserMembership.created_at.asc())
 
-    membership = (await db.execute(mem_query)).scalar_one_or_none()
+    membership = (await db.execute(mem_query)).scalars().first()
     if not membership:
         return None
 

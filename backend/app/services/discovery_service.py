@@ -7,7 +7,7 @@ import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.services.mutation_engine import ASTMutationEngine, MutantSpec
 from app.services.sandbox_service import ExecutionSandboxConfig, SandboxManager

@@ -380,6 +380,24 @@ class LLMTestSynthesizer:
 
         test_func_name = f"test_{func_name}_boundary_line_{mutant.line_number}_{mutant.operator.lower()}"
 
+        # Attempt to compute expected output from original source to generate killing assertions
+        expected_repr = None
+        try:
+            loc = {}
+            exec(source_code, {}, loc)
+            target_fn = loc.get(func_name)
+            if target_fn and callable(target_fn):
+                eval_args = eval(f"({call_args},)")
+                val = target_fn(*eval_args)
+                expected_repr = repr(val)
+        except Exception:
+            expected_repr = None
+
+        if expected_repr is not None:
+            assert_stmt = f"assert result is not None\n    assert result == {expected_repr}"
+        else:
+            assert_stmt = f"assert result is not None\n    assert result == {func_name}({call_args})"
+
         if mutant.operator == "ROR":
             test_code = (
                 f"import pytest\n"
@@ -389,7 +407,7 @@ class LLMTestSynthesizer:
                 f"def {test_func_name}():\n"
                 f"    \"\"\"Verifies exact boundary condition at line {mutant.line_number} to kill surviving {mutant.operator} mutant.\"\"\"\n"
                 f"    result = {func_name}({call_args})\n"
-                f"    assert result is not None\n"
+                f"    {assert_stmt}\n"
             )
 
         elif mutant.operator == "AOR":
@@ -400,7 +418,7 @@ class LLMTestSynthesizer:
                 f"def {test_func_name}():\n"
                 f"    \"\"\"Verifies arithmetic precision to kill {mutant.original_token} -> {mutant.mutated_token} mutant.\"\"\"\n"
                 f"    result = {func_name}({call_args})\n"
-                f"    assert result is not None\n"
+                f"    {assert_stmt}\n"
             )
 
         elif mutant.operator == "LCR":
@@ -411,7 +429,7 @@ class LLMTestSynthesizer:
                 f"def {test_func_name}():\n"
                 f"    \"\"\"Verifies independent truth value requirements for conditional on line {mutant.line_number}.\"\"\"\n"
                 f"    result = {func_name}({call_args})\n"
-                f"    assert result is not None\n"
+                f"    {assert_stmt}\n"
             )
 
         else:
@@ -422,7 +440,7 @@ class LLMTestSynthesizer:
                 f"def {test_func_name}():\n"
                 f"    \"\"\"Verifies boundary sensitivity to kill constant shift mutant.\"\"\"\n"
                 f"    result = {func_name}({call_args})\n"
-                f"    assert result is not None\n"
+                f"    {assert_stmt}\n"
             )
 
         # Audit generated test code to guarantee zero tautologies
@@ -484,6 +502,24 @@ class LLMTestSynthesizer:
         runner_import = "import { describe, it, expect } from 'vitest';" if (framework == "vitest" or not framework) else "// Jest / Vitest test suite"
         test_desc = f"kills {mutant.operator} mutant at line {mutant.line_number}"
 
+        # Attempt to evaluate expected output with Node
+        expected_val_jsts = None
+        try:
+            from app.services.sandbox_service import JSTSSandboxHarness
+            clean_src = JSTSSandboxHarness.strip_typescript_types(source_code)
+            eval_script = f"{clean_src}\nconst _eval_res = {target_fn_name}({call_args});\nconsole.log(JSON.stringify(_eval_res));"
+            import subprocess
+            proc = subprocess.run(["node", "-e", eval_script], capture_output=True, text=True, timeout=1.0)
+            if proc.returncode == 0 and proc.stdout.strip():
+                expected_val_jsts = proc.stdout.strip()
+        except Exception:
+            expected_val_jsts = None
+
+        if expected_val_jsts is not None:
+            jsts_assert = f"    expect(result).toEqual({expected_val_jsts});"
+        else:
+            jsts_assert = f"    expect(result).toBeDefined();\n    expect(result).toEqual({target_fn_name}({call_args}));"
+
         if mutant.operator == "ROR":
             test_code = (
                 f"{runner_import}\n"
@@ -493,8 +529,7 @@ class LLMTestSynthesizer:
                 f"describe('{target_fn_name} boundary invariance', () => {{\n"
                 f"  it('{test_desc}', () => {{\n"
                 f"    const result = {target_fn_name}({call_args});\n"
-                f"    expect(result).toBeDefined();\n"
-                f"    expect(result).not.toBeNull();\n"
+                f"{jsts_assert}\n"
                 f"  }});\n"
                 f"}});\n"
             )
@@ -506,8 +541,7 @@ class LLMTestSynthesizer:
                 f"describe('{target_fn_name} arithmetic precision', () => {{\n"
                 f"  it('{test_desc}', () => {{\n"
                 f"    const result = {target_fn_name}({call_args});\n"
-                f"    expect(result).toBeDefined();\n"
-                f"    expect(typeof result).toBe('number');\n"
+                f"{jsts_assert}\n"
                 f"  }});\n"
                 f"}});\n"
             )
@@ -519,8 +553,7 @@ class LLMTestSynthesizer:
                 f"describe('{target_fn_name} condition branch isolation', () => {{\n"
                 f"  it('{test_desc}', () => {{\n"
                 f"    const result = {target_fn_name}({call_args});\n"
-                f"    expect(result).toBeDefined();\n"
-                f"    expect(result).not.toBeNull();\n"
+                f"{jsts_assert}\n"
                 f"  }});\n"
                 f"}});\n"
             )
@@ -532,7 +565,7 @@ class LLMTestSynthesizer:
                 f"describe('{target_fn_name} invariant verification', () => {{\n"
                 f"  it('{test_desc}', () => {{\n"
                 f"    const result = {target_fn_name}({call_args});\n"
-                f"    expect(result).toBeDefined();\n"
+                f"{jsts_assert}\n"
                 f"  }});\n"
                 f"}});\n"
             )
