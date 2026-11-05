@@ -84,7 +84,7 @@ async def execute_code_lab_sandbox(
             detail="Both source_code and test_code must be provided for sandbox execution.",
         )
 
-    return CodeLabService.execute_sandbox(
+    return await CodeLabService.execute_sandbox_async(
         source_code=payload.source_code,
         test_code=payload.test_code,
         language=payload.language,

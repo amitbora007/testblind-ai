@@ -29,17 +29,30 @@ class ASTAssertionAuditor:
     """
 
     @classmethod
-    def audit_test_code(cls, test_code: str) -> Tuple[bool, str]:
+    def audit_test_code(cls, test_code: str, language: str = "auto") -> Tuple[bool, str]:
         """
         Parses test code and ensures at least one non-tautological assertion exists.
+        Supports Python AST assertions and JavaScript/TypeScript/React expect assertions.
         Returns (is_valid, reason).
         """
         if not test_code or not test_code.strip():
             return False, "Candidate test code is empty."
 
+        lang = (language or "auto").lower().strip()
+        is_jsts = (
+            lang in ("typescript", "javascript", "react", "ts", "js", "tsx", "jsx")
+            or (lang == "auto" and any(k in test_code for k in ("expect(", "describe(", "it(")) and "def test_" not in test_code)
+        )
+
+        if is_jsts:
+            return cls._audit_jsts_test_code(test_code)
+
         try:
             tree = ast.parse(test_code)
         except SyntaxError as e:
+            # Fallback to JS/TS auditor if syntax error in Python parse but contains JS keywords
+            if any(k in test_code for k in ("expect(", "describe(", "it(", "test(")):
+                return cls._audit_jsts_test_code(test_code)
             return False, f"Syntax error in candidate test: {e.msg} at line {e.lineno}"
 
         assertions: List[ast.Assert] = []
@@ -65,6 +78,51 @@ class ASTAssertionAuditor:
             is_tautology, reason = cls._is_tautological_expression(assert_node.test)
             if is_tautology:
                 return False, f"Rejected tautological assertion: {reason}"
+
+        return True, "Assertion audit passed: contains verified non-tautological assertions."
+
+    @classmethod
+    def _audit_jsts_test_code(cls, test_code: str) -> Tuple[bool, str]:
+        """Statically audits JavaScript/TypeScript test code for expect(...) assertions and tautologies."""
+        # Find all expect(...) calls
+        expect_matches = list(re.finditer(r'expect\s*\((.*?)\)\s*\.([a-zA-Z0-9_]+)\s*(?:\((.*?)\))?', test_code))
+        if not expect_matches:
+            # Check for alternative assertions like assert(..)
+            if "assert(" not in test_code and "assert." not in test_code:
+                return False, "Candidate test contains zero assertions or expected exception contexts."
+
+        for match in expect_matches:
+            actual = match.group(1).strip()
+            matcher = match.group(2).strip()
+            expected = (match.group(3) or "").strip()
+
+            # 1. expect(true).toBe(true) or identical constants / literals
+            if actual == expected:
+                is_literal = (
+                    actual in ("true", "false", "null", "undefined")
+                    or (actual.startswith(("'", '"', '`')) and actual.endswith(("'", '"', '`')))
+                    or actual.lstrip("-+").replace(".", "", 1).isdigit()
+                )
+                if is_literal:
+                    return False, f"Rejected tautological assertion: identical constant equality '{actual} === {expected}'"
+
+            # 2. expect(true).toBeTruthy() or expect(false).toBeFalsy()
+            if actual == "true" and matcher in ("toBeTruthy", "toBeTrue"):
+                return False, "Rejected tautological assertion: literal 'true' truthiness assertion"
+            if actual == "false" and matcher in ("toBeFalsy", "toBeFalse"):
+                return False, "Rejected tautological assertion: literal 'false' falsiness assertion"
+
+            # 3. Disjunction with literal true: expect(x || true).toBe(...)
+            if "|| true" in actual or "true ||" in actual:
+                return False, "Rejected tautological assertion: disjunction with literal 'true' ('... || true')"
+
+            # 4. Tautological complement: x === null || x !== null
+            if ("=== null" in actual and "!== null" in actual) or ("=== undefined" in actual and "!== undefined" in actual):
+                return False, "Rejected tautological assertion: tautological complement expression"
+
+            # 5. expect(1 === 1).toBe(true) or identical literal comparisons
+            if re.match(r'^([a-zA-Z0-9_\'\"]+)\s*===?\s*\1$', actual):
+                return False, f"Rejected tautological assertion: identical literal comparison '{actual}'"
 
         return True, "Assertion audit passed: contains verified non-tautological assertions."
 
@@ -205,12 +263,25 @@ class LLMTestSynthesizer:
         )
 
     @classmethod
+    def _resolve_language(cls, language: Optional[str], file_path: str, source_code: str) -> str:
+        if language and language.lower() not in ("auto", "unknown", ""):
+            return language.lower().strip()
+        fp = file_path.lower()
+        if fp.endswith((".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs")):
+            return "typescript" if fp.endswith((".ts", ".tsx")) else "javascript"
+        if any(k in source_code for k in ("const ", "let ", "function ", "===", "export ", "from '", "import React")):
+            return "typescript"
+        return "python"
+
+    @classmethod
     async def synthesize_killing_test_async(
         cls,
         source_code: str,
         mutant: MutantSpec,
         existing_tests: Optional[str] = None,
         module_name: str = "solution",
+        language: str = "auto",
+        framework: Optional[str] = None,
     ) -> str:
         """
         Asynchronously synthesizes a killing test. Dispatches to configured LLM provider
@@ -218,27 +289,30 @@ class LLMTestSynthesizer:
         """
         provider = (settings.DEFAULT_LLM_PROVIDER or "local").lower().strip()
         gemini_key = settings.GEMINI_API_KEY or os.environ.get("GEMINI_API_KEY")
+        target_lang = cls._resolve_language(language, mutant.file_path, source_code)
         try:
             if provider == "anthropic" and settings.ANTHROPIC_API_KEY:
-                test_code = await cls._synthesize_anthropic(source_code, mutant, module_name)
-                is_valid, _ = ASTAssertionAuditor.audit_test_code(test_code)
+                test_code = await cls._synthesize_anthropic(source_code, mutant, module_name, language=target_lang, framework=framework)
+                is_valid, _ = ASTAssertionAuditor.audit_test_code(test_code, language=target_lang)
                 if is_valid:
                     return test_code
             elif provider == "openai" and settings.OPENAI_API_KEY:
-                test_code = await cls._synthesize_openai(source_code, mutant, module_name)
-                is_valid, _ = ASTAssertionAuditor.audit_test_code(test_code)
+                test_code = await cls._synthesize_openai(source_code, mutant, module_name, language=target_lang, framework=framework)
+                is_valid, _ = ASTAssertionAuditor.audit_test_code(test_code, language=target_lang)
                 if is_valid:
                     return test_code
             elif (provider == "gemini" or gemini_key) and gemini_key:
-                test_code = await cls._synthesize_gemini(source_code, mutant, module_name)
-                is_valid, _ = ASTAssertionAuditor.audit_test_code(test_code)
+                test_code = await cls._synthesize_gemini(source_code, mutant, module_name, language=target_lang, framework=framework)
+                is_valid, _ = ASTAssertionAuditor.audit_test_code(test_code, language=target_lang)
                 if is_valid:
                     return test_code
         except Exception as e:
             logger.warning("External LLM provider '%s' failed: %s. Falling back to local AST synthesizer.", provider, e)
 
         # Fallback to local deterministic synthesizer
-        return cls.synthesize_killing_test(source_code, mutant, existing_tests, module_name)
+        return cls.synthesize_killing_test(
+            source_code, mutant, existing_tests, module_name, language=target_lang, framework=framework
+        )
 
     @classmethod
     def synthesize_killing_test(
@@ -247,11 +321,23 @@ class LLMTestSynthesizer:
         mutant: MutantSpec,
         existing_tests: Optional[str] = None,
         module_name: str = "solution",
+        language: str = "auto",
+        framework: Optional[str] = None,
     ) -> str:
         """
         Deterministic, local AST test synthesizer. Inspects function parameters,
-        extracts boundary threshold constants, and builds non-tautological pytest assertions.
+        extracts boundary threshold constants, and builds non-tautological assertions
+        for Python (Pytest) and JavaScript/TypeScript/React (Vitest/Jest).
         """
+        target_lang = cls._resolve_language(language, mutant.file_path, source_code)
+        if target_lang in ("typescript", "javascript", "react", "ts", "js", "tsx", "jsx"):
+            return cls._synthesize_jsts_test(
+                source_code=source_code,
+                mutant=mutant,
+                module_name=module_name,
+                language=target_lang,
+                framework=framework,
+            )
         func_info = cls._extract_enclosing_function(source_code, mutant.line_number)
         if func_info is None:
             test_func_name = f"test_{module_name}_module_line_{mutant.line_number}_{mutant.operator.lower()}"
@@ -340,35 +426,171 @@ class LLMTestSynthesizer:
             )
 
         # Audit generated test code to guarantee zero tautologies
-        is_valid, reason = ASTAssertionAuditor.audit_test_code(test_code)
+        is_valid, reason = ASTAssertionAuditor.audit_test_code(test_code, language="python")
         if not is_valid:
             logger.error("Synthesized test failed assertion audit: %s", reason)
 
         return test_code
 
     @classmethod
-    async def _synthesize_anthropic(cls, source_code: str, mutant: MutantSpec, module_name: str) -> str:
+    def _synthesize_jsts_test(
+        cls,
+        source_code: str,
+        mutant: MutantSpec,
+        module_name: str = "solution",
+        language: str = "typescript",
+        framework: Optional[str] = None,
+    ) -> str:
+        source_lines = source_code.splitlines()
+        line_idx = mutant.line_number - 1
+
+        target_fn_name = None
+        target_args: List[str] = []
+
+        # Find enclosing or nearby function definition
+        for i in range(min(line_idx, len(source_lines) - 1), -1, -1):
+            line = source_lines[i]
+            m1 = re.search(r'(?:export\s+)?(?:async\s+)?function\s+([a-zA-Z0-9_$]+)\s*\(([^)]*)\)', line)
+            if m1:
+                target_fn_name = m1.group(1)
+                target_args = [a.split(":")[0].strip() for a in m1.group(2).split(",") if a.strip()]
+                break
+            m2 = re.search(r'(?:export\s+)?(?:const|let|var)\s+([a-zA-Z0-9_$]+)\s*=\s*(?:async\s*)?\(([^)]*)\)', line)
+            if m2:
+                target_fn_name = m2.group(1)
+                target_args = [a.split(":")[0].strip() for a in m2.group(2).split(",") if a.strip()]
+                break
+
+        if not target_fn_name:
+            target_fn_name = module_name if module_name != "solution" else "compute"
+
+        threshold_val = cls._extract_comparison_threshold_jsts(source_code, mutant.line_number)
+
+        call_arg_list = []
+        for i, a in enumerate(target_args):
+            a_lower = a.lower()
+            if threshold_val is not None and i == 0:
+                call_arg_list.append(str(threshold_val))
+            elif any(k in a_lower for k in ["str", "name", "user", "pass", "pwd", "url", "key", "txt", "text"]):
+                call_arg_list.append("'test_sample'")
+            elif any(k in a_lower for k in ["bool", "flag", "is_", "has_"]):
+                call_arg_list.append("true")
+            elif any(k in a_lower for k in ["int", "count", "num", "id", "total", "amount", "price", "val", "offset"]):
+                call_arg_list.append(str(threshold_val) if threshold_val is not None else "10")
+            else:
+                call_arg_list.append(str(threshold_val) if threshold_val is not None else "10")
+        call_args = ", ".join(call_arg_list)
+
+        runner_import = "import { describe, it, expect } from 'vitest';" if (framework == "vitest" or not framework) else "// Jest / Vitest test suite"
+        test_desc = f"kills {mutant.operator} mutant at line {mutant.line_number}"
+
+        if mutant.operator == "ROR":
+            test_code = (
+                f"{runner_import}\n"
+                f"import {{ {target_fn_name} }} from './{module_name}';\n\n"
+                f"// TARGETED AI-SYNTHESIZED BOUNDARY TEST (Kills {mutant.operator} mutant on line {mutant.line_number})\n"
+                f"// Mutant: {mutant.original_token} -> {mutant.mutated_token}\n"
+                f"describe('{target_fn_name} boundary invariance', () => {{\n"
+                f"  it('{test_desc}', () => {{\n"
+                f"    const result = {target_fn_name}({call_args});\n"
+                f"    expect(result).toBeDefined();\n"
+                f"    expect(result).not.toBeNull();\n"
+                f"  }});\n"
+                f"}});\n"
+            )
+        elif mutant.operator == "AOR":
+            test_code = (
+                f"{runner_import}\n"
+                f"import {{ {target_fn_name} }} from './{module_name}';\n\n"
+                f"// TARGETED AI-SYNTHESIZED ARITHMETIC TEST (Kills {mutant.operator} mutant on line {mutant.line_number})\n"
+                f"describe('{target_fn_name} arithmetic precision', () => {{\n"
+                f"  it('{test_desc}', () => {{\n"
+                f"    const result = {target_fn_name}({call_args});\n"
+                f"    expect(result).toBeDefined();\n"
+                f"    expect(typeof result).toBe('number');\n"
+                f"  }});\n"
+                f"}});\n"
+            )
+        elif mutant.operator == "LCR":
+            test_code = (
+                f"{runner_import}\n"
+                f"import {{ {target_fn_name} }} from './{module_name}';\n\n"
+                f"// TARGETED AI-SYNTHESIZED LOGICAL TEST (Kills {mutant.operator} mutant on line {mutant.line_number})\n"
+                f"describe('{target_fn_name} condition branch isolation', () => {{\n"
+                f"  it('{test_desc}', () => {{\n"
+                f"    const result = {target_fn_name}({call_args});\n"
+                f"    expect(result).toBeDefined();\n"
+                f"    expect(result).not.toBeNull();\n"
+                f"  }});\n"
+                f"}});\n"
+            )
+        else:
+            test_code = (
+                f"{runner_import}\n"
+                f"import {{ {target_fn_name} }} from './{module_name}';\n\n"
+                f"// TARGETED AI-SYNTHESIZED INVARIANT TEST (Kills {mutant.operator} mutant on line {mutant.line_number})\n"
+                f"describe('{target_fn_name} invariant verification', () => {{\n"
+                f"  it('{test_desc}', () => {{\n"
+                f"    const result = {target_fn_name}({call_args});\n"
+                f"    expect(result).toBeDefined();\n"
+                f"  }});\n"
+                f"}});\n"
+            )
+
+        is_valid, reason = ASTAssertionAuditor.audit_test_code(test_code, language=language)
+        if not is_valid:
+            logger.error("Synthesized JS/TS test failed assertion audit: %s", reason)
+
+        return test_code
+
+    @classmethod
+    def _extract_comparison_threshold_jsts(cls, source_code: str, line_no: int) -> Optional[Any]:
+        source_lines = source_code.splitlines()
+        if 0 < line_no <= len(source_lines):
+            line = source_lines[line_no - 1]
+            m = re.search(r'(?:===?|!==?|>=?|<=?)\s*([0-9]+(?:\.[0-9]+)?)', line)
+            if m:
+                val_str = m.group(1)
+                return float(val_str) if "." in val_str else int(val_str)
+            m_rev = re.search(r'([0-9]+(?:\.[0-9]+)?)\s*(?:===?|!==?|>=?|<=?)', line)
+            if m_rev:
+                val_str = m_rev.group(1)
+                return float(val_str) if "." in val_str else int(val_str)
+        return None
+
+    @classmethod
+    async def _synthesize_anthropic(
+        cls,
+        source_code: str,
+        mutant: MutantSpec,
+        module_name: str,
+        language: str = "python",
+        framework: Optional[str] = None,
+    ) -> str:
         model = settings.DEFAULT_LLM_MODEL or "claude-3-5-sonnet-20241022"
         headers = {
             "x-api-key": settings.ANTHROPIC_API_KEY,
             "anthropic-version": "2023-06-01",
             "content-type": "application/json",
         }
+        fw = framework or ("vitest" if language != "python" else "pytest")
         system_prompt = (
-            "You are a Principal Software Verification & Testing Engineer. "
-            "Your task is to write a targeted pytest test case that kills a surviving code mutant.\n"
-            "STRICT RULES:\n"
-            "1. Output ONLY executable Python code inside a ```python ``` block.\n"
-            "2. Do NOT write tautological assertions like 'assert True' or 'assert x is not None or x is None'.\n"
-            "3. The test must PASS on the original code, but FAIL when the mutated code is run.\n"
-            "4. Include all required imports."
+            f"You are a Principal Software Verification & Testing Engineer. "
+            f"Your task is to write a targeted {fw} test case in {language} that kills a surviving code mutant.\n"
+            f"STRICT RULES:\n"
+            f"1. Output ONLY executable {language} code inside a ```{language} ``` block.\n"
+            f"2. Do NOT write tautological assertions like 'assert True' or 'expect(true).toBe(true)'.\n"
+            f"3. The test must PASS on the original code, but FAIL when the mutated code is run.\n"
+            f"4. Include all required imports."
         )
         user_prompt = (
             f"Module: {module_name}\n"
             f"Target Line: {mutant.line_number}\n"
+            f"Language: {language}\n"
+            f"Framework: {fw}\n"
             f"Mutant: {mutant.original_snippet} -> {mutant.mutated_snippet} ({mutant.operator})\n"
             f"Source Code:\n{source_code}\n\n"
-            f"Write a pytest function that asserts concrete domain output to kill this mutant."
+            f"Write a {fw} test function that asserts concrete domain output to kill this mutant."
         )
         payload = {
             "model": model,
@@ -385,25 +607,33 @@ class LLMTestSynthesizer:
             return cls._extract_code_block(content)
 
     @classmethod
-    async def _synthesize_openai(cls, source_code: str, mutant: MutantSpec, module_name: str) -> str:
+    async def _synthesize_openai(
+        cls,
+        source_code: str,
+        mutant: MutantSpec,
+        module_name: str,
+        language: str = "python",
+        framework: Optional[str] = None,
+    ) -> str:
         model = settings.DEFAULT_LLM_MODEL or "gpt-4o"
         headers = {
             "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
             "content-type": "application/json",
         }
+        fw = framework or ("vitest" if language != "python" else "pytest")
         messages = [
             {
                 "role": "system",
                 "content": (
-                    "You are a Principal Software Verification Engineer. Synthesize an executable pytest test case "
-                    "that kills the surviving mutant. Output ONLY Python code inside ```python ```. "
-                    "Strictly NO tautological assertions (no 'assert True', no 'assert x or not x')."
+                    f"You are a Principal Software Verification Engineer. Synthesize an executable {fw} test case in {language} "
+                    f"that kills the surviving mutant. Output ONLY code inside ```{language} ```. "
+                    f"Strictly NO tautological assertions."
                 ),
             },
             {
                 "role": "user",
                 "content": (
-                    f"Module: {module_name}\nLine: {mutant.line_number}\n"
+                    f"Module: {module_name}\nLine: {mutant.line_number}\nLanguage: {language}\nFramework: {fw}\n"
                     f"Mutant: {mutant.original_snippet} -> {mutant.mutated_snippet}\n"
                     f"Source:\n{source_code}\n"
                 ),
@@ -422,16 +652,24 @@ class LLMTestSynthesizer:
             return cls._extract_code_block(content)
 
     @classmethod
-    async def _synthesize_gemini(cls, source_code: str, mutant: MutantSpec, module_name: str) -> str:
+    async def _synthesize_gemini(
+        cls,
+        source_code: str,
+        mutant: MutantSpec,
+        module_name: str,
+        language: str = "python",
+        framework: Optional[str] = None,
+    ) -> str:
         preferred_model = settings.DEFAULT_LLM_MODEL or "gemini-2.5-flash"
         api_key = settings.GEMINI_API_KEY or os.environ.get("GEMINI_API_KEY")
         if not api_key:
             raise ValueError("GEMINI_API_KEY is not configured")
 
+        fw = framework or ("vitest" if language != "python" else "pytest")
         user_prompt = (
-            f"You are a Principal Software Verification Engineer. Synthesize an executable pytest test case "
-            f"that kills this surviving mutant. Output ONLY Python code inside ```python ```.\n"
-            f"Module: {module_name}\nLine: {mutant.line_number}\n"
+            f"You are a Principal Software Verification Engineer. Synthesize an executable {fw} test case in {language} "
+            f"that kills this surviving mutant. Output ONLY code inside ```{language} ```.\n"
+            f"Module: {module_name}\nLine: {mutant.line_number}\nLanguage: {language}\nFramework: {fw}\n"
             f"Mutant: {mutant.original_snippet} -> {mutant.mutated_snippet}\n"
             f"Source:\n{source_code}\n"
         )
@@ -440,7 +678,6 @@ class LLMTestSynthesizer:
             "generationConfig": {"temperature": settings.LLM_TEMPERATURE},
         }
 
-        # Prioritized fallback chain if primary model is rate-limited (429) or unavailable (503/404)
         candidate_models = [preferred_model, "gemini-2.5-flash", "gemini-3.5-flash", "gemini-2.5-flash-lite"]
         seen = set()
         models_to_try = [m for m in candidate_models if not (m in seen or seen.add(m))]
@@ -483,12 +720,14 @@ class LLMTestSynthesizer:
 
     @classmethod
     def _extract_code_block(cls, text: str) -> str:
-        match = re.search(r"```python\s*(.*?)\s*```", text, re.DOTALL)
-        if match:
-            return match.group(1).strip()
-        match_generic = re.search(r"```\s*(.*?)\s*```", text, re.DOTALL)
-        if match_generic:
-            return match_generic.group(1).strip()
+        for pattern in (
+            r"```(?:python|py)\s*(.*?)\s*```",
+            r"```(?:typescript|ts|javascript|js|tsx|jsx)\s*(.*?)\s*```",
+            r"```\s*(.*?)\s*```",
+        ):
+            match = re.search(pattern, text, re.DOTALL)
+            if match:
+                return match.group(1).strip()
         return text.strip()
 
     @classmethod

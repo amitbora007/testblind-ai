@@ -205,13 +205,15 @@ export function TestCasesPage() {
   };
 
   const handleExportTest = async (tc: TestCaseResult) => {
+    const isJsTs = tc.framework === 'vitest' || tc.framework === 'typescript' || tc.framework === 'jest' || tc.framework === 'javascript' || (tc.file_path || '').endsWith('.ts') || (tc.file_path || '').endsWith('.js');
+    const ext = isJsTs ? (tc.framework === 'jest' || tc.framework === 'javascript' ? '.js' : '.ts') : '.py';
     try {
       const content = await api.exportTestCase(tc.id);
       const blob = new Blob([content], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${tc.name}.py`;
+      a.download = `${tc.name}${ext}`;
       a.click();
       URL.revokeObjectURL(url);
     } catch {
@@ -219,7 +221,7 @@ export function TestCasesPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${tc.name}.py`;
+      a.download = `${tc.name}${ext}`;
       a.click();
       URL.revokeObjectURL(url);
     }
@@ -527,7 +529,7 @@ export function TestCasesPage() {
                 leftIcon={<Download className="w-3.5 h-3.5" />}
                 onClick={() => selectedTestCase && handleExportTest(selectedTestCase)}
               >
-                Export .py
+                Export {selectedTestCase ? ((selectedTestCase.framework === 'vitest' || selectedTestCase.framework === 'typescript') ? '.ts' : (selectedTestCase.framework === 'jest' || selectedTestCase.framework === 'javascript') ? '.js' : '.py') : ''}
               </Button>
               <Button
                 variant="primary"

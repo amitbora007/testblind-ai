@@ -39,6 +39,10 @@ import {
   LogOut,
   Lock,
   Sparkles,
+  Trash2,
+  AlertTriangle,
+  ChevronDown,
+  Loader2,
 } from "lucide-react";
 
 export interface ProjectRecord {
@@ -147,13 +151,65 @@ export function ProjectsPage({
     permissions: [],
     setup_instructions: null,
   });
-  const [availableRepos, setAvailableRepos] = useState<Array<{ id: number; name: string; full_name: string; default_branch: string; description?: string | null }>>([]);
+  const [availableRepos, setAvailableRepos] = useState<
+    Array<{
+      id: number;
+      name: string;
+      full_name: string;
+      default_branch: string;
+      description?: string | null;
+      language?: string | null;
+      private?: boolean;
+    }>
+  >([]);
+  const [isRepoDropdownOpen, setIsRepoDropdownOpen] = useState(false);
+  const [repoSearchQuery, setRepoSearchQuery] = useState("");
+  const repoDropdownRef = useRef<HTMLDivElement>(null);
   const [selectedRepo, setSelectedRepo] = useState("");
   const [customRepoMode, setCustomRepoMode] = useState(false);
   const [customRepoUrl, setCustomRepoUrl] = useState("");
   const [selectedBranch, setSelectedBranch] = useState("main");
   const [testCommand, setTestCommand] = useState("pytest --tb=short tests/");
   const [subScope, setSubScope] = useState("");
+
+  // Close combobox when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (repoDropdownRef.current && !repoDropdownRef.current.contains(event.target as Node)) {
+        setIsRepoDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  const handleSelectRepo = (repo: {
+    id: number;
+    name: string;
+    full_name: string;
+    default_branch: string;
+    description?: string | null;
+    language?: string | null;
+    private?: boolean;
+  }) => {
+    setSelectedRepo(repo.full_name);
+    setProjectName(repo.name);
+    setSelectedBranch(repo.default_branch || "main");
+    setIsRepoDropdownOpen(false);
+    setRepoSearchQuery("");
+
+    // Auto-configure test command & framework based on detected repo language
+    const lang = (repo.language || "").toLowerCase();
+    if (lang === "typescript" || lang === "tsx" || lang === "javascript" || lang === "jsx" || lang === "react") {
+      setTestCommand("npx vitest run");
+    } else if (lang === "go") {
+      setTestCommand("go test ./...");
+    } else if (lang === "python") {
+      setTestCommand("pytest --tb=short tests/");
+    }
+  };
 
   // ZIP Flow state
   const [uploadedFile, setUploadedFile] = useState<{ name: string; size: string; rawFile: File } | null>(null);
@@ -173,6 +229,11 @@ export function ProjectsPage({
   // Auto-generation option state
   const [autoGenerateIfNoTests, setAutoGenerateIfNoTests] = useState(true);
   const [generatingProjectId, setGeneratingProjectId] = useState<string | null>(null);
+
+  // Project Deletion State
+  const [projectToDelete, setProjectToDelete] = useState<ProjectRecord | null>(null);
+  const [isDeletingProject, setIsDeletingProject] = useState(false);
+  const [deleteProjectError, setDeleteProjectError] = useState<string | null>(null);
 
   // GitHub Authentication Interactive State
   const [isConnectingGitHub, setIsConnectingGitHub] = useState(false);
@@ -265,9 +326,21 @@ export function ProjectsPage({
       setAvailableRepos(repos);
       if (repos && repos.length > 0) {
         // Preserve user's current selection if valid, instead of clobbering it back to repos[0]
-        setSelectedRepo((prev) => (prev && repos.some((r) => r.full_name === prev) ? prev : repos[0].full_name));
-        setSelectedBranch((prev) => (prev || repos[0].default_branch || "main"));
-        setProjectName((prev) => (prev || repos[0].name));
+        setSelectedRepo((prev) => {
+          const match = prev && repos.find((r) => r.full_name === prev);
+          const chosen = match || repos[0];
+          setSelectedBranch((b) => b || chosen.default_branch || "main");
+          setProjectName((p) => p || chosen.name);
+          const lang = (chosen.language || "").toLowerCase();
+          if (lang === "typescript" || lang === "tsx" || lang === "javascript" || lang === "jsx" || lang === "react") {
+            setTestCommand("npx vitest run");
+          } else if (lang === "go") {
+            setTestCommand("go test ./...");
+          } else if (lang === "python") {
+            setTestCommand("pytest --tb=short tests/");
+          }
+          return chosen.full_name;
+        });
         setSuccessToast(`Loaded ${repos.length} GitHub repositories.`);
       }
     } catch (err: any) {
@@ -421,6 +494,25 @@ export function ProjectsPage({
     }
   };
 
+  const handleDeleteProject = async () => {
+    if (!projectToDelete) return;
+    setIsDeletingProject(true);
+    setDeleteProjectError(null);
+    try {
+      if (!isDemoActive()) {
+        await api.deleteProject(projectToDelete.id);
+      }
+      setProjects((prev) => prev.filter((p) => p.id !== projectToDelete.id));
+      setSuccessToast(`Project "${projectToDelete.name}" was successfully removed.`);
+      setTimeout(() => setSuccessToast(null), 5000);
+      setProjectToDelete(null);
+    } catch (err: any) {
+      setDeleteProjectError(err.message || "Failed to remove project. Please try again.");
+    } finally {
+      setIsDeletingProject(false);
+    }
+  };
+
   useEffect(() => {
     loadProjects();
 
@@ -476,12 +568,31 @@ export function ProjectsPage({
     } else {
       setTargetUpdateProject(null);
       if (availableRepos.length > 0 && !selectedRepo) {
-        setSelectedRepo(availableRepos[0].full_name);
-        setProjectName(availableRepos[0].name);
-        setSelectedBranch(availableRepos[0].default_branch || "main");
+        const first = availableRepos[0];
+        setSelectedRepo(first.full_name);
+        setProjectName(first.name);
+        setSelectedBranch(first.default_branch || "main");
+        const lang = (first.language || "").toLowerCase();
+        if (lang === "typescript" || lang === "tsx" || lang === "javascript" || lang === "jsx" || lang === "react") {
+          setTestCommand("npx vitest run");
+        } else if (lang === "go") {
+          setTestCommand("go test ./...");
+        } else if (lang === "python") {
+          setTestCommand("pytest --tb=short tests/");
+        }
       } else if (!forProject && !projectName && selectedRepo) {
         const found = availableRepos.find((r) => r.full_name === selectedRepo);
-        if (found) setProjectName(found.name);
+        if (found) {
+          setProjectName(found.name);
+          const lang = (found.language || "").toLowerCase();
+          if (lang === "typescript" || lang === "tsx" || lang === "javascript" || lang === "jsx" || lang === "react") {
+            setTestCommand("npx vitest run");
+          } else if (lang === "go") {
+            setTestCommand("go test ./...");
+          } else if (lang === "python") {
+            setTestCommand("pytest --tb=short tests/");
+          }
+        }
       }
     }
     if (githubStatus.connected && availableRepos.length === 0 && !isLoadingRepos) {
@@ -561,12 +672,32 @@ export function ProjectsPage({
     setIsSubmitting(true);
     setFormError("");
 
+    const chosen = availableRepos.find((r) => r.full_name === targetRepo);
+    const repoLang = chosen?.language?.toLowerCase() || "";
+    let framework = "pytest";
+    if (
+      repoLang === "typescript" ||
+      repoLang === "javascript" ||
+      repoLang === "tsx" ||
+      repoLang === "jsx" ||
+      repoLang === "react" ||
+      testCommand.includes("npm") ||
+      testCommand.includes("jest") ||
+      testCommand.includes("vitest")
+    ) {
+      framework = "vitest";
+    } else if (repoLang === "go" || testCommand.includes("go test")) {
+      framework = "go";
+    } else if (repoLang === "python" || testCommand.includes("pytest")) {
+      framework = "pytest";
+    }
+
     try {
       if (!isDemoActive()) {
         // Create project
         const newProj = await api.createProject({
           name: finalProjectName,
-          framework: testCommand.includes("npm") || testCommand.includes("jest") || testCommand.includes("vitest") ? "vitest" : "pytest",
+          framework: framework,
           default_branch: selectedBranch || "main",
           description: `Connected to GitHub repository: ${targetRepo}`,
         });
@@ -602,8 +733,8 @@ export function ProjectsPage({
           description: `Connected to GitHub repository: ${targetRepo}`,
           repoUrl: targetRepo,
           branch: selectedBranch || "main",
-          language: testCommand.includes("npm") ? "TypeScript" : "Python",
-          testHarness: testCommand.includes("npm") ? "vitest 1.6" : "pytest 8.2",
+          language: framework === "vitest" ? "TypeScript" : framework === "go" ? "Go" : "Python",
+          testHarness: framework === "vitest" ? "vitest 1.6" : framework === "go" ? "go test" : "pytest 8.2",
           totalTests: autoGenerateIfNoTests ? 3 : 0,
           mutationScore: autoGenerateIfNoTests ? 80 : 0,
           lastRun: "Connected just now",
@@ -872,6 +1003,19 @@ export function ProjectsPage({
                   >
                     {project.status}
                   </Badge>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-slate-500 hover:text-red-400 hover:bg-red-950/40 p-1 h-7 w-7 rounded-md transition-colors"
+                    title={`Remove project ${project.name}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeleteProjectError(null);
+                      setProjectToDelete(project);
+                    }}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
                 </div>
               </div>
 
@@ -947,6 +1091,19 @@ export function ProjectsPage({
                     Run Gaps <ArrowRight className="w-3 h-3 ml-1" />
                   </Button>
                 )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-slate-500 hover:text-red-400 hover:bg-red-950/30 p-1.5 h-7 w-7 rounded-md transition-colors"
+                  title={`Remove project ${project.name}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDeleteProjectError(null);
+                    setProjectToDelete(project);
+                  }}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </Button>
               </div>
             </CardFooter>
           </Card>
@@ -1197,47 +1354,169 @@ export function ProjectsPage({
                       }}
                       helperText="Full git repository clone URL."
                     />
+                  ) : isLoadingRepos ? (
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-medium text-slate-300">Select Repository *</label>
+                      <div className="h-10 px-3 bg-slate-900 border border-slate-700/80 rounded-lg flex items-center justify-between text-xs text-slate-400">
+                        <div className="flex items-center gap-2">
+                          <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
+                          <span>Loading authorized repositories...</span>
+                        </div>
+                        <span className="text-[10px] text-slate-500 font-mono animate-pulse">Syncing...</span>
+                      </div>
+                    </div>
                   ) : (
-                    <Select
-                      id="project-connect-repo-select"
-                      label="Select Repository *"
-                      value={selectedRepo || (availableRepos[0]?.full_name ?? "")}
-                      disabled={isLoadingRepos || (availableRepos.length === 0 && !githubStatus.connected)}
-                      onChange={(e) => {
-                        const nextRepo = e.target.value;
-                        if (!nextRepo) return;
-                        setSelectedRepo(nextRepo);
-                        const chosen = availableRepos.find((r) => r.full_name === nextRepo);
-                        if (chosen) {
-                          setProjectName(chosen.name);
-                          setSelectedBranch(chosen.default_branch || "main");
-                        } else if (!projectName) {
-                          const parts = nextRepo.split("/");
-                          setProjectName(parts[parts.length - 1] || "");
-                        }
-                      }}
-                    >
-                      {isLoadingRepos ? (
-                        <option value="" disabled>Loading repositories from GitHub API...</option>
-                      ) : availableRepos.length > 0 ? (
-                        availableRepos.map((r) => (
-                          <option key={r.full_name || r.id} value={r.full_name}>
-                            {r.full_name} {r.description ? `(${r.description})` : ""}
-                          </option>
-                        ))
-                      ) : isDemoActive() ? (
-                        <>
-                          <option value="acme-corp/core-auth-service">acme-corp/core-auth-service</option>
-                          <option value="acme-corp/payment-ledger">acme-corp/payment-ledger</option>
-                        </>
-                      ) : (
-                        <option value="" disabled>
-                          {githubStatus.connected
-                            ? "No repositories found for this account. Enter custom URL below."
-                            : "No repositories loaded. Click 'Authenticate with GitHub' or 'Use Token' above."}
-                        </option>
+                    <div className="space-y-1.5 relative" ref={repoDropdownRef}>
+                      <label className="block text-xs font-medium text-slate-300">Select Repository *</label>
+                      <div
+                        id="project-connect-repo-select"
+                        onClick={() => setIsRepoDropdownOpen((prev) => !prev)}
+                        role="button"
+                        tabIndex={0}
+                        className={`h-10 px-3 bg-slate-900 border rounded-lg flex items-center justify-between text-xs cursor-pointer transition-colors ${
+                          isRepoDropdownOpen
+                            ? "border-blue-500 ring-1 ring-blue-500 text-white"
+                            : "border-slate-700 text-slate-200 hover:border-slate-600"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Github className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span className="truncate font-mono">
+                            {selectedRepo || "Choose a repository..."}
+                          </span>
+                          {(() => {
+                            const sel = availableRepos.find((r) => r.full_name === selectedRepo);
+                            if (sel?.language) {
+                              return (
+                                <Badge variant="blue" size="sm" className="text-[10px] py-0 px-1.5 shrink-0">
+                                  {sel.language}
+                                </Badge>
+                              );
+                            }
+                            return null;
+                          })()}
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0 text-slate-400 ml-2">
+                          <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isRepoDropdownOpen ? "rotate-180" : ""}`} />
+                        </div>
+                      </div>
+
+                      {/* Combobox Dropdown */}
+                      {isRepoDropdownOpen && (
+                        <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-slate-900 border border-slate-700/90 rounded-lg shadow-2xl overflow-hidden backdrop-blur-md">
+                          {/* Search header */}
+                          <div className="p-2 border-b border-slate-800 bg-slate-950/60 flex items-center gap-2">
+                            <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <input
+                              type="text"
+                              value={repoSearchQuery}
+                              onChange={(e) => setRepoSearchQuery(e.target.value)}
+                              placeholder="Search repositories..."
+                              className="w-full bg-transparent text-xs text-white placeholder-slate-500 focus:outline-none"
+                              autoFocus
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            {repoSearchQuery && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setRepoSearchQuery("");
+                                }}
+                                className="text-[10px] text-slate-400 hover:text-white px-1"
+                              >
+                                Clear
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Scrollable Repo List */}
+                          <div className="max-h-56 overflow-y-auto divide-y divide-slate-800/60 custom-scrollbar">
+                            {(() => {
+                              const query = repoSearchQuery.toLowerCase().trim();
+                              const filtered = availableRepos.filter((r) =>
+                                !query ||
+                                r.full_name.toLowerCase().includes(query) ||
+                                (r.description && r.description.toLowerCase().includes(query)) ||
+                                (r.language && r.language.toLowerCase().includes(query))
+                              );
+
+                              if (filtered.length === 0) {
+                                return (
+                                  <div className="p-4 text-center text-xs text-slate-400">
+                                    {availableRepos.length === 0 ? (
+                                      <div>
+                                        <p>No repositories found.</p>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setCustomRepoMode(true);
+                                            setIsRepoDropdownOpen(false);
+                                          }}
+                                          className="text-blue-400 hover:underline mt-1 inline-block"
+                                        >
+                                          Enter custom git URL
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <p>No repositories matching "{repoSearchQuery}"</p>
+                                    )}
+                                  </div>
+                                );
+                              }
+
+                              return filtered.map((r) => {
+                                const isSelected = r.full_name === selectedRepo;
+                                return (
+                                  <div
+                                    key={r.full_name || r.id}
+                                    onClick={() => handleSelectRepo(r)}
+                                    className={`px-3 py-2 text-xs cursor-pointer flex items-center justify-between transition-colors ${
+                                      isSelected
+                                        ? "bg-blue-950/60 text-white"
+                                        : "hover:bg-slate-800/70 text-slate-300"
+                                    }`}
+                                  >
+                                    <div className="min-w-0 pr-2">
+                                      <div className="flex items-center gap-1.5 font-mono text-[12px]">
+                                        {r.private ? (
+                                          <Lock className="w-3 h-3 text-amber-400 shrink-0" />
+                                        ) : (
+                                          <FolderGit2 className="w-3 h-3 text-slate-400 shrink-0" />
+                                        )}
+                                        <span className="truncate font-semibold">{r.full_name}</span>
+                                      </div>
+                                      {r.description && (
+                                        <p className="text-[11px] text-slate-400 truncate mt-0.5 max-w-sm">
+                                          {r.description}
+                                        </p>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      {r.language && (
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-blue-300 border border-slate-700 font-medium">
+                                          {r.language}
+                                        </span>
+                                      )}
+                                      {isSelected && (
+                                        <CheckCircle2 className="w-3.5 h-3.5 text-blue-400" />
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              });
+                            })()}
+                          </div>
+
+                          {/* Footer info */}
+                          <div className="p-1.5 bg-slate-950/80 border-t border-slate-800 text-[10px] text-slate-400 flex items-center justify-between px-3">
+                            <span>{availableRepos.length} total repositories</span>
+                            <span className="text-slate-500 font-mono">Auto-detects language</span>
+                          </div>
+                        </div>
                       )}
-                    </Select>
+                    </div>
                   )}
 
                   <Select
@@ -1499,6 +1778,88 @@ export function ProjectsPage({
               </div>
             </TabContent>
           </Tabs>
+        </div>
+      </Dialog>
+
+      {/* Remove Project Confirmation Modal */}
+      <Dialog
+        isOpen={!!projectToDelete}
+        onClose={() => {
+          if (!isDeletingProject) {
+            setProjectToDelete(null);
+            setDeleteProjectError(null);
+          }
+        }}
+        title="Remove Project"
+        description={projectToDelete ? `Permanently remove "${projectToDelete.name}" from TestBlind AI.` : "Remove Project"}
+        maxWidth="md"
+        footer={
+          <div className="flex items-center justify-end gap-2.5 w-full">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isDeletingProject}
+              onClick={() => {
+                setProjectToDelete(null);
+                setDeleteProjectError(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              isLoading={isDeletingProject}
+              onClick={handleDeleteProject}
+              leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+            >
+              Remove Project
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          {deleteProjectError && (
+            <div className="p-3 rounded-lg bg-red-950/60 border border-red-500/40 text-red-300 text-xs flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+              <span>{deleteProjectError}</span>
+            </div>
+          )}
+
+          <div className="p-3.5 rounded-lg bg-red-950/30 border border-red-800/50 flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+            <div className="space-y-1 text-xs">
+              <span className="font-semibold text-red-300 block">
+                Warning: This action is permanent and cannot be undone.
+              </span>
+              <p className="text-slate-400 leading-relaxed text-[11px]">
+                Removing this project will permanently delete all associated test suites, mutant logs, execution history, scan jobs, and cached workspaces from TestBlind AI.
+              </p>
+            </div>
+          </div>
+
+          {projectToDelete && (
+            <div className="p-3 rounded-lg bg-slate-900/80 border border-slate-800 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Project Name</span>
+                <span className="font-semibold text-white">{projectToDelete.name}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Repository</span>
+                <span className="font-mono text-slate-300 text-[11px] truncate max-w-[240px]">
+                  {projectToDelete.repoUrl}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Branch</span>
+                <span className="font-mono text-slate-300 text-[11px]">{projectToDelete.branch}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Test Cases</span>
+                <span className="font-semibold text-slate-200">{projectToDelete.totalTests}</span>
+              </div>
+            </div>
+          )}
         </div>
       </Dialog>
     </div>

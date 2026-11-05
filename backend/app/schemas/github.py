@@ -42,6 +42,7 @@ class GitHubRepoItem(BaseModel):
     default_branch: str = "main"
     html_url: str
     description: Optional[str] = None
+    language: Optional[str] = None
     permissions: Dict[str, bool] = Field(default_factory=dict)
     updated_at: Optional[str] = None
 

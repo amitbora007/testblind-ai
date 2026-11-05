@@ -416,7 +416,7 @@ export const api = {
     }
   },
 
-  async getGitHubRepos(): Promise<Array<{ id: number; name: string; full_name: string; default_branch: string }>> {
+  async getGitHubRepos(): Promise<Array<{ id: number; name: string; full_name: string; default_branch: string; description?: string | null; language?: string | null; private?: boolean }>> {
     try {
       const res = await fetch(`${API_BASE}/integrations/github/repos`, {
         headers: getHeaders(),
@@ -698,6 +698,18 @@ export const api = {
     return await res.json();
   },
 
+  async deleteProject(projectId: string): Promise<{ message: string; project_id: string }> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to delete project' }));
+      throw new Error(err.detail || 'Failed to delete project');
+    }
+    return await res.json();
+  },
+
   // Scan Jobs
   async getProjectScanJobs(projectId: string): Promise<ScanJobResult[]> {
     try {
@@ -711,13 +723,15 @@ export const api = {
     }
   },
 
-  async triggerScanJobSync(projectId: string, branch: string = 'main'): Promise<ScanJobResult> {
+  async triggerScanJobSync(projectId: string, branch: string = 'main', runner?: string): Promise<ScanJobResult> {
     const res = await fetch(`${API_BASE}/projects/${projectId}/scan-jobs/sync`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify({
         branch,
         trigger: 'manual',
+        runner: runner || undefined,
+        framework: runner || undefined,
       }),
     });
     if (!res.ok) {
@@ -759,8 +773,12 @@ export const api = {
     }
   },
 
-  async synthesizeMutationTest(jobId: string, mutationId: string): Promise<SynthesizeMutationResult> {
-    const res = await fetch(`${API_BASE}/scan-jobs/${jobId}/mutations/${mutationId}/synthesize`, {
+  async synthesizeMutationTest(jobId: string, mutationId: string, framework?: string): Promise<SynthesizeMutationResult> {
+    let url = `${API_BASE}/scan-jobs/${jobId}/mutations/${mutationId}/synthesize`;
+    if (framework) {
+      url += `?framework=${encodeURIComponent(framework)}`;
+    }
+    const res = await fetch(url, {
       method: 'POST',
       headers: getHeaders(),
     });

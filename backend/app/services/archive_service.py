@@ -285,9 +285,19 @@ class ProjectStructureDetector:
         if primary_lang in {"typescript", "javascript"}:
             if "vitest.config.ts" in configs_set or "vitest.config.js" in configs_set:
                 return "vitest", "npx vitest run"
+            pkg_path = root_path / "package.json"
+            if pkg_path.exists():
+                try:
+                    pkg_text = pkg_path.read_text(encoding="utf-8").lower()
+                    if "vitest" in pkg_text:
+                        return "vitest", "npx vitest run"
+                    if "jest" in pkg_text:
+                        return "jest", "npm test"
+                except Exception:
+                    pass
             if "jest.config.js" in configs_set or "jest.config.ts" in configs_set:
                 return "jest", "npm test"
-            return "jest", "npm test"
+            return "vitest", "npx vitest run"
 
         if primary_lang == "go":
             return "go test", "go test -v ./..."

@@ -156,11 +156,32 @@ const DEMO_MUTATIONS: MutationResult[] = [
   },
 ];
 
+function formatFrameworkLabel(framework?: string): string {
+  if (!framework) return 'Polyglot';
+  const f = framework.toLowerCase();
+  if (f === 'react') return 'React / Vitest';
+  if (f === 'typescript') return 'TypeScript / Vitest';
+  if (f === 'javascript') return 'JavaScript / Jest';
+  if (f === 'python' || f === 'pytest') return 'Python / Pytest';
+  return framework;
+}
+
+function getFileLanguageBadge(filePath: string): { label: string; variant: 'blue' | 'purple' | 'success' | 'warning' } {
+  const ext = filePath.split('.').pop()?.toLowerCase();
+  if (ext === 'tsx' || ext === 'jsx') return { label: 'React / JSX', variant: 'purple' };
+  if (ext === 'ts') return { label: 'TypeScript', variant: 'blue' };
+  if (ext === 'js') return { label: 'JavaScript', variant: 'warning' };
+  if (ext === 'py') return { label: 'Python', variant: 'success' };
+  return { label: ext ? ext.toUpperCase() : 'CODE', variant: 'blue' };
+}
+
 export function GapDiscoveryPage() {
   // State
   const [projects, setProjects] = useState<ProjectResult[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [selectedBranch, setSelectedBranch] = useState<string>('main');
+  const [selectedGenerator, setSelectedGenerator] = useState<string>('auto');
+  const [synthesisFramework, setSynthesisFramework] = useState<string>('auto');
   const [latestJob, setLatestJob] = useState<ScanJobResult | null>(null);
   const [mutations, setMutations] = useState<MutationResult[]>(() => isDemoActive() ? DEMO_MUTATIONS : []);
   const [isLiveBackend, setIsLiveBackend] = useState<boolean>(false);
@@ -220,6 +241,13 @@ export function GapDiscoveryPage() {
           const firstProj = fetchedProjects[0];
           setSelectedProjectId(firstProj.id);
           setSelectedBranch(firstProj.default_branch || 'main');
+          const fw = (firstProj.framework || '').toLowerCase();
+          setSelectedGenerator(
+            fw === 'vitest' || fw === 'react' || fw === 'typescript' ? 'vitest' :
+            fw === 'jest' || fw === 'javascript' ? 'jest' :
+            fw === 'go' ? 'go' :
+            fw === 'pytest' || fw === 'python' ? 'pytest' : 'auto'
+          );
           fetchBranches(firstProj.id, firstProj.default_branch);
 
           // Load latest scan job for this project
@@ -254,6 +282,13 @@ export function GapDiscoveryPage() {
     const proj = projects.find((p) => p.id === projectId);
     if (proj) {
       setSelectedBranch(proj.default_branch || 'main');
+      const fw = (proj.framework || '').toLowerCase();
+      setSelectedGenerator(
+        fw === 'vitest' || fw === 'react' || fw === 'typescript' ? 'vitest' :
+        fw === 'jest' || fw === 'javascript' ? 'jest' :
+        fw === 'go' ? 'go' :
+        fw === 'pytest' || fw === 'python' ? 'pytest' : 'auto'
+      );
     }
     fetchBranches(projectId, proj?.default_branch);
     try {
@@ -278,7 +313,7 @@ export function GapDiscoveryPage() {
     setScanError(null);
     try {
       if (selectedProjectId && isLiveBackend) {
-        const newJob = await api.triggerScanJobSync(selectedProjectId, selectedBranch);
+        const newJob = await api.triggerScanJobSync(selectedProjectId, selectedBranch, selectedGenerator);
         setLatestJob(newJob);
         const updatedMutations = await api.getScanJobMutations(newJob.id);
         setMutations(updatedMutations || []);
@@ -328,6 +363,7 @@ export function GapDiscoveryPage() {
   const paginatedMutations = filteredMutations.slice(startIndex, startIndex + pageSize);
 
   // Calculate Live KPI Metrics
+  const selectedProject = projects.find((p) => p.id === selectedProjectId);
   const totalCount = latestJob?.total_mutants ?? mutations.length;
   const killedCount = latestJob?.killed_mutants ?? mutations.filter((m) => m.status === 'killed').length;
   const survivingCount = latestJob?.surviving_mutants ?? mutations.filter((m) => m.status === 'survived').length;
@@ -338,15 +374,22 @@ export function GapDiscoveryPage() {
     : 0;
 
   // Synthesize Test Handler (Dual-State Verification)
-  const handleSynthesize = async (mutant: MutationResult) => {
+  const handleSynthesize = async (mutant: MutationResult, frameworkOverride?: string) => {
+    const targetFw = frameworkOverride || (synthesisFramework !== 'auto' ? synthesisFramework : undefined);
     if (!latestJob || !isLiveBackend) {
       // Demo synthesis simulation
       setIsSynthesizing(true);
       setTimeout(() => {
         setIsSynthesizing(false);
+        const isJsTs = (targetFw && (targetFw === 'vitest' || targetFw === 'jest' || targetFw === 'react')) ||
+          mutant.file_path.endsWith('.ts') || mutant.file_path.endsWith('.tsx') || mutant.file_path.endsWith('.js') || mutant.file_path.endsWith('.jsx');
+        const fallbackCode = isJsTs
+          ? `import { describe, it, expect } from '${targetFw === 'jest' ? '@jest/globals' : 'vitest'}';\n\ndescribe('${mutant.operator} Invariant Verification', () => {\n  it('kills ${mutant.operator} mutant at line ${mutant.line_number}', () => {\n    // Dual-State Certified: Passes on pristine baseline, fails on mutated syntax\n    expect(computeBoundaryCheck(true)).toBe(true);\n  });\n});`
+          : `def test_${mutant.operator.toLowerCase()}_boundary_invariance():\n    # Dual-State Certified: Passes on pristine baseline, fails on mutated syntax\n    val = compute_boundary_check(target=True)\n    assert val is True`;
+
         const synthRes: SynthesizeMutationResult = {
           mutation_id: mutant.id,
-          synthesized_test_code: `def test_${mutant.operator.toLowerCase()}_boundary_invariance():\n    # Dual-State Certified: Passes on pristine baseline, fails on mutated syntax\n    val = compute_boundary_check(target=True)\n    assert val is True`,
+          synthesized_test_code: fallbackCode,
           verification_status: 'mutation_killing',
           verified: true,
           baseline_passed: true,
@@ -373,7 +416,7 @@ export function GapDiscoveryPage() {
 
     try {
       setIsSynthesizing(true);
-      const res = await api.synthesizeMutationTest(latestJob.id, mutant.id);
+      const res = await api.synthesizeMutationTest(latestJob.id, mutant.id, targetFw);
       setSynthesisResult(res);
       // Update local mutant record
       const updated = {
@@ -473,6 +516,26 @@ export function GapDiscoveryPage() {
               ))}
             </Select>
           )}
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-slate-400 font-medium hidden md:inline">Runner:</span>
+            <Select
+              id="gap-generator-select"
+              value={selectedGenerator}
+              onChange={(e) => {
+                setSelectedGenerator(e.target.value);
+              }}
+              className="w-44 text-xs font-medium"
+              title="Select test case generator & execution runner"
+            >
+              <option value="auto">Auto-Detect</option>
+              <option value="pytest">Python / Pytest</option>
+              <option value="vitest">TypeScript / Vitest</option>
+              <option value="react">React / Vitest</option>
+              <option value="jest">JavaScript / Jest</option>
+              <option value="go">Go / testing</option>
+            </Select>
+          </div>
 
           <Select
             value={selectedBranch}
@@ -685,7 +748,14 @@ export function GapDiscoveryPage() {
                       {mutant.id}
                     </TableCell>
                     <TableCell className="font-mono text-xs text-slate-200">
-                      {mutant.file_path}:{mutant.line_number}
+                      <div className="flex items-center gap-1.5">
+                        <span className="truncate max-w-[200px]" title={mutant.file_path}>
+                          {mutant.file_path}:{mutant.line_number}
+                        </span>
+                        <Badge variant={getFileLanguageBadge(mutant.file_path).variant} size="sm" className="text-[10px] py-0 px-1.5">
+                          {getFileLanguageBadge(mutant.file_path).label}
+                        </Badge>
+                      </div>
                     </TableCell>
                     <TableCell>
                       <Badge variant="purple" size="sm">
@@ -762,9 +832,29 @@ export function GapDiscoveryPage() {
         maxWidth="lg"
         footer={
           <div className="flex flex-col sm:flex-row items-center justify-between w-full gap-3">
-            <div className="text-xs text-slate-400 flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span>Target invariant: Dual-State Verified (PASS baseline, FAIL mutant)</span>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="text-xs text-slate-400 flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                <span>Target invariant: Dual-State Verified</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] text-slate-400">Generator:</span>
+                <select
+                  value={synthesisFramework}
+                  onChange={(e) => {
+                    const newFw = e.target.value;
+                    setSynthesisFramework(newFw);
+                    if (inspectMutant) handleSynthesize(inspectMutant, newFw);
+                  }}
+                  className="bg-slate-900 text-slate-200 text-xs rounded border border-slate-700 px-2 py-1 focus:border-blue-500 focus:outline-none"
+                >
+                  <option value="auto">Auto (from file)</option>
+                  <option value="vitest">Vitest (TS/React)</option>
+                  <option value="pytest">Pytest (Python)</option>
+                  <option value="jest">Jest (JS)</option>
+                  <option value="go">Go (testing)</option>
+                </select>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" onClick={() => setInspectMutant(null)}>
@@ -778,7 +868,7 @@ export function GapDiscoveryPage() {
                     size="sm"
                     isLoading={isSynthesizing}
                     leftIcon={<Sparkles className="w-3.5 h-3.5" />}
-                    onClick={() => inspectMutant && handleSynthesize(inspectMutant)}
+                    onClick={() => inspectMutant && handleSynthesize(inspectMutant, synthesisFramework)}
                   >
                     {inspectMutant.synthesized_test_code ? 'Re-Synthesize Test' : 'Synthesize Killing Test'}
                   </Button>
@@ -827,9 +917,14 @@ export function GapDiscoveryPage() {
                   <Code2 className="w-4 h-4 text-blue-400" />
                   AST Semantic Substitution Diff:
                 </span>
-                <Badge variant="purple" size="sm">
-                  {inspectMutant.operator} Operator
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant={getFileLanguageBadge(inspectMutant.file_path).variant} size="sm">
+                    {getFileLanguageBadge(inspectMutant.file_path).label}
+                  </Badge>
+                  <Badge variant="purple" size="sm">
+                    {inspectMutant.operator} Operator
+                  </Badge>
+                </div>
               </div>
 
               <div className="p-3 bg-slate-950 rounded-lg border border-slate-800 font-mono text-xs space-y-1 overflow-x-auto">

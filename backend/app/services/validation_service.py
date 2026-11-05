@@ -1,10 +1,11 @@
 import hashlib
+import re
 import sys
 import time
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from app.services.sandbox_service import ExecutionSandboxConfig, SandboxManager
+from app.services.sandbox_service import ExecutionSandboxConfig, JSTSSandboxHarness, SandboxManager
 
 
 @dataclass
@@ -27,6 +28,7 @@ class DualStateTestValidator:
     Enforces the dual-state verification quality gate for AI-synthesized tests.
     Every test must pass on pristine code (Gate 1) and fail on mutated code (Gate 2)
     before being certified as a verified mutation killer.
+    Supports both Python (pytest) and JavaScript/TypeScript/React (vitest/node).
     """
 
     @classmethod
@@ -37,9 +39,29 @@ class DualStateTestValidator:
         candidate_test_code: str,
         module_name: str = "solution",
         timeout_seconds: int = 5,
+        language: str = "auto",
     ) -> ValidationOutcome:
         start_time = time.perf_counter()
-        cfg = ExecutionSandboxConfig(wall_timeout_seconds=timeout_seconds)
+        lang_lower = (language or "auto").lower().strip()
+        is_jsts = (
+            lang_lower in ("typescript", "javascript", "react", "ts", "js", "tsx", "jsx")
+            or (lang_lower == "auto" and any(k in candidate_test_code for k in ("describe(", "expect(", "it(")))
+        )
+
+        # Node.js V8 requires ~2GB virtual address space reservation on 64-bit Linux for pointer compression
+        mem_limit = 2048 if is_jsts else 512
+        cfg = ExecutionSandboxConfig(wall_timeout_seconds=timeout_seconds, memory_limit_mb=mem_limit)
+
+        if is_jsts:
+            return await cls._validate_jsts_candidate(
+                source_code=source_code,
+                mutated_source=mutated_source,
+                candidate_test_code=candidate_test_code,
+                module_name=module_name,
+                cfg=cfg,
+                start_time=start_time,
+            )
+
         cmd = [sys.executable, "-m", "pytest", "-v", "--tb=short", f"test_{module_name}.py"]
 
         conftest_stub = (
@@ -140,6 +162,103 @@ class DualStateTestValidator:
             f"test_{module_name}.py": candidate_test_code,
             "conftest.py": conftest_stub,
         }
+        res_mutant = await SandboxManager.execute_in_sandbox(
+            command=cmd,
+            files=files_mutant,
+            config=cfg,
+        )
+
+        mutant_failed = (res_mutant.exit_code != 0)
+        duration_ms = (time.perf_counter() - start_time) * 1000
+
+        hash_payload = (
+            f"{source_code}\n---\n{mutated_source}\n---\n"
+            f"{candidate_test_code}\n---\n{res_base.exit_code}:{res_mutant.exit_code}"
+        )
+        evidence_hash = hashlib.sha256(hash_payload.encode()).hexdigest()
+
+        if mutant_failed:
+            return ValidationOutcome(
+                verification_status="mutation_killing",
+                verified=True,
+                baseline_passed=True,
+                mutant_killed=True,
+                evidence_hash=evidence_hash,
+                duration_ms=round(duration_ms, 2),
+                baseline_stdout=res_base.stdout,
+                baseline_stderr=res_base.stderr,
+                mutant_stdout=res_mutant.stdout,
+                mutant_stderr=res_mutant.stderr,
+                details="Verified killing test: Passed on pristine baseline and failed on mutated code.",
+            )
+        else:
+            return ValidationOutcome(
+                verification_status="verified_passing",
+                verified=False,
+                baseline_passed=True,
+                mutant_killed=False,
+                evidence_hash=evidence_hash,
+                duration_ms=round(duration_ms, 2),
+                baseline_stdout=res_base.stdout,
+                baseline_stderr=res_base.stderr,
+                mutant_stdout=res_mutant.stdout,
+                mutant_stderr=res_mutant.stderr,
+                details="Candidate test passed on pristine code but also passed on mutant (failed to kill).",
+            )
+
+    @classmethod
+    async def _validate_jsts_candidate(
+        cls,
+        source_code: str,
+        mutated_source: str,
+        candidate_test_code: str,
+        module_name: str,
+        cfg: ExecutionSandboxConfig,
+        start_time: float,
+    ) -> ValidationOutcome:
+        clean_source = JSTSSandboxHarness.strip_typescript_types(source_code)
+        clean_mutant = JSTSSandboxHarness.strip_typescript_types(mutated_source)
+        clean_test = candidate_test_code.replace("from './" + module_name + "'", "from './" + module_name + ".js'")
+
+        files_base = JSTSSandboxHarness.get_harness_files()
+        files_base[f"{module_name}.js"] = clean_source
+        files_base[f"test_{module_name}.js"] = clean_test
+
+        cmd = ["node", f"test_{module_name}.js"]
+
+        # Gate 1: Baseline Check on Pristine Code (Must PASS)
+        res_base = await SandboxManager.execute_in_sandbox(
+            command=cmd,
+            files=files_base,
+            config=cfg,
+        )
+
+        baseline_passed = (res_base.exit_code == 0)
+        if not baseline_passed:
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            evidence = hashlib.sha256(
+                f"{source_code}\n{candidate_test_code}\nFAIL_BASE".encode()
+            ).hexdigest()
+
+            return ValidationOutcome(
+                verification_status="execution_failure",
+                verified=False,
+                baseline_passed=False,
+                mutant_killed=False,
+                evidence_hash=evidence,
+                duration_ms=round(duration_ms, 2),
+                baseline_stdout=res_base.stdout,
+                baseline_stderr=res_base.stderr,
+                mutant_stdout="",
+                mutant_stderr="",
+                details="Candidate JS/TS test failed on pristine baseline code (regression or hallucinated test setup).",
+            )
+
+        # Gate 2: Mutation Killing Check on Mutated Code (Must FAIL)
+        files_mutant = JSTSSandboxHarness.get_harness_files()
+        files_mutant[f"{module_name}.js"] = clean_mutant
+        files_mutant[f"test_{module_name}.js"] = clean_test
+
         res_mutant = await SandboxManager.execute_in_sandbox(
             command=cmd,
             files=files_mutant,

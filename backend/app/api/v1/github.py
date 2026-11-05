@@ -335,6 +335,7 @@ async def list_github_repositories(
                                     default_branch=item.get("default_branch", "main"),
                                     html_url=item.get("html_url", ""),
                                     description=item.get("description"),
+                                    language=item.get("language"),
                                     permissions=item.get("permissions", {"admin": False, "push": True, "pull": True}),
                                     updated_at=item.get("updated_at"),
                                 )
@@ -359,6 +360,7 @@ async def list_github_repositories(
                             default_branch=r.default_branch or "main",
                             html_url=r.repo_url,
                             description="Configured repository",
+                            language="TypeScript" if any(k in short_name.lower() for k in ("react", "dashboard", "spa", "ui", "front", "cyberintelix")) else "Python",
                             permissions={"admin": True, "push": True, "pull": True},
                             updated_at=r.updated_at.isoformat() if r.updated_at else None,
                         )
@@ -379,6 +381,7 @@ async def list_github_repositories(
                         default_branch=p.default_branch or "main",
                         html_url=f"https://github.com/{proj_full_name}",
                         description=f"Project: {p.name} ({p.framework})",
+                        language="TypeScript" if p.framework in ("vitest", "jest", "react", "typescript") or any(k in p.name.lower() for k in ("react", "dashboard", "spa", "ui", "front", "cyberintelix")) else "Python",
                         permissions={"admin": True, "push": True, "pull": True},
                         updated_at=p.updated_at.isoformat() if p.updated_at else None,
                     )
@@ -396,6 +399,7 @@ async def list_github_repositories(
                     default_branch="main",
                     html_url=f"https://github.com/{prefix}/core-auth-service",
                     description="Microservice authentication, JWT tokens, and OAuth broker.",
+                    language="Python",
                     permissions={"admin": True, "push": True, "pull": True},
                     updated_at="2026-10-25T14:30:00Z",
                 ),
@@ -407,6 +411,7 @@ async def list_github_repositories(
                     default_branch="main",
                     html_url=f"https://github.com/{prefix}/payment-ledger",
                     description="Double-entry payment settlement and transaction audit engine.",
+                    language="Python",
                     permissions={"admin": False, "push": True, "pull": True},
                     updated_at="2026-10-24T18:15:00Z",
                 ),
@@ -424,6 +429,7 @@ async def list_github_repositories(
             default_branch="main",
             html_url="https://github.com/acme-corp/core-auth-service",
             description="Microservice authentication, JWT tokens, and OAuth broker.",
+            language="Python",
             permissions={"admin": True, "push": True, "pull": True},
             updated_at="2026-10-25T14:30:00Z",
         ),
@@ -435,6 +441,7 @@ async def list_github_repositories(
             default_branch="main",
             html_url="https://github.com/acme-corp/payment-ledger",
             description="Double-entry payment settlement and transaction audit engine.",
+            language="Python",
             permissions={"admin": False, "push": True, "pull": True},
             updated_at="2026-10-24T18:15:00Z",
         ),
@@ -446,6 +453,7 @@ async def list_github_repositories(
             default_branch="main",
             html_url="https://github.com/acme-corp/billing-dashboard",
             description="Customer invoice portal and subscription telemetry.",
+            language="TypeScript",
             permissions={"admin": False, "push": False, "pull": True},
             updated_at="2026-10-20T09:40:00Z",
         ),
@@ -512,6 +520,12 @@ async def list_github_branches(
         p = (await db.execute(proj_q)).scalar_one_or_none()
         if p and p.default_branch:
             default_branch = p.default_branch
+
+    if repo == "core-auth-service":
+        return [
+            GitHubBranchItem(name="main", commit_sha=uuid.uuid4().hex[:12], protected=True),
+            GitHubBranchItem(name="develop", commit_sha=uuid.uuid4().hex[:12], protected=False),
+        ]
 
     return [
         GitHubBranchItem(name=default_branch, commit_sha=uuid.uuid4().hex[:12], protected=True)

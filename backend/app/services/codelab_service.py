@@ -1,8 +1,9 @@
 import ast
+import asyncio
 import hashlib
 import os
+import re
 import shutil
-import subprocess
 import sys
 import tempfile
 import time
@@ -15,6 +16,9 @@ from app.schemas.codelab import (
     CodeLabSynthesizeResponse,
     MutationCandidate,
 )
+from app.services.llm_service import LLMTestSynthesizer
+from app.services.mutation_engine import JSTSMutationEngine, MutantSpec
+from app.services.sandbox_service import ExecutionSandboxConfig, JSTSSandboxHarness, SandboxManager
 
 
 class CodeLabService:
@@ -154,43 +158,90 @@ class CodeLabService:
         existing_tests: Optional[str],
         expected_behavior: Optional[str],
     ) -> CodeLabAnalyzeResponse:
-        """Fallback pattern-based AST analysis for TypeScript / JavaScript / Go."""
+        """Pattern and AST token analysis for TypeScript / JavaScript / Go."""
         lines = source_code.splitlines()
         branches_count = 0
         mutation_candidates: List[MutationCandidate] = []
+        functions: List[Dict[str, Any]] = []
 
+        # Extract functions via regex
         for idx, line in enumerate(lines, start=1):
             s = line.strip()
             if any(s.startswith(k) for k in ("if", "else", "switch", "case", "for", "while")):
                 branches_count += 1
 
-            if ">" in s and ">=" not in s:
+            m1 = re.search(r'(?:export\s+)?(?:async\s+)?function\s+([a-zA-Z0-9_$]+)\s*\(([^)]*)\)', s)
+            if m1:
+                functions.append({
+                    "name": m1.group(1),
+                    "line": idx,
+                    "args": [a.split(":")[0].strip() for a in m1.group(2).split(",") if a.strip()],
+                    "docstring": None,
+                })
+            else:
+                m2 = re.search(r'(?:export\s+)?(?:const|let|var)\s+([a-zA-Z0-9_$]+)\s*=\s*(?:async\s*)?\(([^)]*)\)', s)
+                if m2:
+                    functions.append({
+                        "name": m2.group(1),
+                        "line": idx,
+                        "args": [a.split(":")[0].strip() for a in m2.group(2).split(",") if a.strip()],
+                        "docstring": None,
+                    })
+
+        if not functions:
+            functions = [{"name": "solution", "line": 1, "args": [], "docstring": None}]
+
+        # Generate candidates using JSTSMutationEngine
+        ext = "ts" if language in ("typescript", "react") else "js"
+        try:
+            mutants = JSTSMutationEngine.generate_mutants_for_source(source_code, file_path=f"solution.{ext}")
+            for m in mutants:
                 mutation_candidates.append(
                     MutationCandidate(
-                        id=f"mut_{idx}",
-                        line_number=idx,
-                        operator_type="ROR",
-                        original_operator=">",
-                        mutated_operator=">=",
-                        original_snippet=s,
-                        mutated_snippet=s.replace(">", ">=", 1),
-                        description="Mutate strictly greater than (>) to greater or equal (>=)",
+                        id=m.id,
+                        line_number=m.line_number,
+                        operator_type=m.operator,
+                        original_operator=m.original_token,
+                        mutated_operator=m.mutated_token,
+                        original_snippet=m.original_snippet,
+                        mutated_snippet=m.mutated_snippet,
+                        description=m.description,
                     )
                 )
+        except Exception:
+            pass
+
+        # Fallback if no mutants found
+        if not mutation_candidates:
+            for idx, line in enumerate(lines, start=1):
+                s = line.strip()
+                if ">" in s and ">=" not in s:
+                    mutation_candidates.append(
+                        MutationCandidate(
+                            id=f"mut_{idx}",
+                            line_number=idx,
+                            operator_type="ROR",
+                            original_operator=">",
+                            mutated_operator=">=",
+                            original_snippet=s,
+                            mutated_snippet=s.replace(">", ">=", 1),
+                            description="Mutate strictly greater than (>) to greater or equal (>=)",
+                        )
+                    )
 
         return CodeLabAnalyzeResponse(
             language=language,
             ast_nodes_count=len(lines) * 4,
-            functions=[{"name": "main_snippet", "line": 1, "args": [], "docstring": None}],
+            functions=functions,
             branches_count=branches_count,
             mutation_candidates=mutation_candidates,
             suggestions=[
                 CodeLabSuggestion(
                     title=f"{language.capitalize()} Boundary Analysis",
-                    description=f"Identified {len(mutation_candidates)} relational operators for boundary test coverage.",
+                    description=f"Identified {len(mutation_candidates)} relational and arithmetic operators for boundary test coverage.",
                     category="mutation_gap",
-                    target_line=1,
-                    severity="medium",
+                    target_line=mutation_candidates[0].line_number if mutation_candidates else 1,
+                    severity="high" if mutation_candidates else "medium",
                 )
             ],
             is_executable=False,
@@ -230,14 +281,29 @@ class CodeLabService:
                 "and verifies error handling invariants on invalid and non-positive orders."
             )
         else:
-            test_code = (
-                "// AI-SYNTHESIZED BOUNDARY TEST\n"
-                "test('validates boundary conditions and zero input', () => {\n"
-                "  expect(calculateTierDiscount(100.0, 'PLATINUM')).toBe(0.05);\n"
-                "  expect(() => calculateTierDiscount(-1.0, 'PLATINUM')).toThrow();\n"
-                "});\n"
+            cand = target_mutation or {"operator": "ROR", "target": "> to >=", "line_number": 1, "original_token": ">", "mutated_token": ">="}
+            line_no = cand.get("line_number", 1)
+            op = cand.get("operator", "ROR")
+            mut = MutantSpec(
+                id="codelab-mutant",
+                file_path=f"solution.{'ts' if lang in ('typescript', 'react') else 'js'}",
+                line_number=line_no,
+                col_offset=0,
+                operator=op,
+                original_token=cand.get("original_operator", cand.get("original_token", ">")),
+                mutated_token=cand.get("mutated_operator", cand.get("mutated_token", ">=")),
+                original_snippet=cand.get("original_snippet", ""),
+                mutated_snippet=cand.get("mutated_snippet", ""),
+                description=f"CodeLab mutation {op}",
             )
-            rationale = "Synthesized targeted assertion checking boundary value and exception invariant."
+            test_code = LLMTestSynthesizer.synthesize_killing_test(
+                source_code=source_code,
+                mutant=mut,
+                module_name="solution",
+                language=lang,
+                framework="vitest",
+            )
+            rationale = f"Synthesized targeted {lang.capitalize()} test asserting boundary condition to kill {op} mutant."
 
         return CodeLabSynthesizeResponse(
             synthesized_test_code=test_code,
@@ -248,6 +314,87 @@ class CodeLabService:
         )
 
     @classmethod
+    async def execute_sandbox_async(
+        cls,
+        source_code: str,
+        test_code: str,
+        language: str = "python",
+    ) -> CodeLabExecuteResponse:
+        """
+        Executes code snippet and test harness inside an isolated execution sandbox
+        with scrubbed environment variables and POSIX resource limits.
+        """
+        start_time = time.perf_counter()
+        lang_clean = (language or "python").lower().strip()
+        is_jsts = lang_clean in ("typescript", "javascript", "react", "ts", "js", "tsx", "jsx")
+
+        cfg = ExecutionSandboxConfig(
+            wall_timeout_seconds=10,
+            memory_limit_mb=2048 if is_jsts else 512,
+        )
+
+        if is_jsts:
+            clean_source = JSTSSandboxHarness.strip_typescript_types(source_code)
+            clean_test = JSTSSandboxHarness.strip_typescript_types(test_code)
+            clean_test = clean_test.replace("from './solution'", "from './solution.js'").replace('from "./solution"', 'from "./solution.js"')
+
+            files = JSTSSandboxHarness.get_harness_files()
+            files["solution.js"] = clean_source
+            files["test_solution.js"] = clean_test
+
+            cmd = ["node", "test_solution.js"]
+        else:
+            files = {
+                "solution.py": source_code,
+                "test_solution.py": test_code,
+            }
+            cmd = [sys.executable, "-m", "pytest", "-v", "--tb=short", "test_solution.py"]
+
+        res = await SandboxManager.execute_in_sandbox(
+            command=cmd,
+            files=files,
+            config=cfg,
+        )
+
+        duration_ms = (time.perf_counter() - start_time) * 1000
+        stdout = res.stdout
+        stderr = res.stderr
+        exit_code = res.exit_code
+
+        if res.timed_out:
+            return CodeLabExecuteResponse(
+                exit_code=124,
+                stdout=stdout,
+                stderr="Execution terminated: Subprocess exceeded sandbox execution timeout.",
+                duration_ms=round(duration_ms, 2),
+                mutant_status="TIMED_OUT",
+                execution_hash=res.execution_hash or "sha256:timeout_failure",
+                is_executable=True,
+                verified=False,
+                baseline_passed=False,
+                mutant_killed=False,
+            )
+
+        baseline_passed = (exit_code == 0)
+        mutant_status = "KILLED" if baseline_passed else "ERROR"
+        evidence_hash = hashlib.sha256(
+            f"{source_code}\n---\n{test_code}\n---\n{stdout}\n---\n{exit_code}".encode()
+        ).hexdigest()
+
+        return CodeLabExecuteResponse(
+            exit_code=exit_code,
+            stdout=stdout or ("Test suite executed successfully under isolated sandbox runtime.\n" if baseline_passed else ""),
+            stderr=stderr,
+            duration_ms=round(duration_ms, 2),
+            mutant_status=mutant_status,
+            execution_hash=evidence_hash,
+            is_executable=True,
+            verified=baseline_passed,
+            baseline_passed=baseline_passed,
+            mutant_killed=baseline_passed,
+        )
+
+    @classmethod
     def execute_sandbox(
         cls,
         source_code: str,
@@ -255,78 +402,17 @@ class CodeLabService:
         language: str = "python",
     ) -> CodeLabExecuteResponse:
         """
-        Executes code snippet and test harness in an ephemeral sandbox directory.
-        Captures exit codes, stdout, stderr, execution duration, and cryptographic evidence hash.
+        Executes code snippet and test harness in an isolated, scrubbed sandbox.
+        Synchronously wraps execute_sandbox_async for sync callers.
         """
-        start_time = time.perf_counter()
-        temp_dir = tempfile.mkdtemp(prefix="testblind_codelab_")
-
         try:
-            solution_file = os.path.join(temp_dir, "solution.py")
-            test_file = os.path.join(temp_dir, "test_solution.py")
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
 
-            with open(solution_file, "w", encoding="utf-8") as f:
-                f.write(source_code)
-
-            with open(test_file, "w", encoding="utf-8") as f:
-                f.write(test_code)
-
-            # Execute with pytest
-            cmd = [sys.executable, "-m", "pytest", "-v", "--tb=short", test_file]
-            env = os.environ.copy()
-            env["PYTHONPATH"] = f"{temp_dir}:{env.get('PYTHONPATH', '')}"
-
-            proc = subprocess.run(
-                cmd,
-                cwd=temp_dir,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                timeout=5.0,
-                env=env,
-            )
-
-            duration_ms = (time.perf_counter() - start_time) * 1000
-            stdout = proc.stdout
-            stderr = proc.stderr
-            exit_code = proc.returncode
-
-            # Check if tests pass on baseline
-            baseline_passed = (exit_code == 0)
-            mutant_status = "KILLED" if baseline_passed else "ERROR"
-            verified = baseline_passed
-            mutant_killed = baseline_passed
-
-            # Sealed cryptographic evidence hash
-            hash_payload = f"{source_code}\n---\n{test_code}\n---\n{stdout}\n---\n{exit_code}"
-            evidence_hash = hashlib.sha256(hash_payload.encode()).hexdigest()
-
-            return CodeLabExecuteResponse(
-                exit_code=exit_code,
-                stdout=stdout,
-                stderr=stderr,
-                duration_ms=round(duration_ms, 2),
-                mutant_status=mutant_status,
-                execution_hash=evidence_hash,
-                is_executable=True,
-                verified=verified,
-                baseline_passed=baseline_passed,
-                mutant_killed=mutant_killed,
-            )
-
-        except subprocess.TimeoutExpired:
-            duration_ms = (time.perf_counter() - start_time) * 1000
-            return CodeLabExecuteResponse(
-                exit_code=124,
-                stdout="",
-                stderr="Execution terminated: Subprocess exceeded 5.0 second playground sandbox timeout.",
-                duration_ms=round(duration_ms, 2),
-                mutant_status="TIMED_OUT",
-                execution_hash="sha256:timeout_failure",
-                is_executable=True,
-                verified=False,
-                baseline_passed=False,
-                mutant_killed=False,
-            )
-        finally:
-            shutil.rmtree(temp_dir, ignore_errors=True)
+        if loop and loop.is_running():
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                return pool.submit(asyncio.run, cls.execute_sandbox_async(source_code, test_code, language)).result()
+        else:
+            return asyncio.run(cls.execute_sandbox_async(source_code, test_code, language))

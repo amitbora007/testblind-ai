@@ -10,7 +10,7 @@ from app.api.deps import TenantContext, get_tenant_context, require_role
 from app.core.database import get_db
 from app.models.project import Project, Repository
 from app.models.user import RoleEnum
-from app.schemas.project import ProjectCreate, ProjectRead, RepoConnect, RepoRead
+from app.schemas.project import ProjectCreate, ProjectDeleteResponse, ProjectRead, RepoConnect, RepoRead
 from app.schemas.test import AutoGenerateTestsRequest, AutoGenerateTestsResponse
 from app.services.auto_test_generator import AutoTestGeneratorService
 
@@ -83,6 +83,50 @@ async def get_project(
         )
 
     return ProjectRead.model_validate(project)
+
+
+@router.delete("/{project_id}", response_model=ProjectDeleteResponse, status_code=status.HTTP_200_OK)
+async def delete_project(
+    project_id: uuid.UUID,
+    tenant: Annotated[TenantContext, Depends(require_role(RoleEnum.ENGINEER))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> ProjectDeleteResponse:
+    """
+    Permanently delete a project and all associated repositories, scan jobs,
+    test cases, test scenarios, execution runs, and incidents.
+    """
+    proj_query = select(Project).where(
+        Project.id == project_id,
+        Project.organization_id == tenant.organization_id,
+    )
+    project = (await db.execute(proj_query)).scalar_one_or_none()
+
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found",
+        )
+
+    project_name = project.name
+
+    # Clean up on-disk workspace/clone storage if present
+    try:
+        from app.services.retention_service import RetentionManager
+        import shutil
+        target_dir = RetentionManager.get_repo_storage_path(str(tenant.organization_id), str(project.id))
+        if target_dir.exists():
+            shutil.rmtree(target_dir, ignore_errors=True)
+    except Exception:
+        pass
+
+    # Delete project entity (cascades automatically delete all child records)
+    await db.delete(project)
+    await db.commit()
+
+    return ProjectDeleteResponse(
+        message=f"Project '{project_name}' deleted successfully",
+        project_id=project_id,
+    )
 
 
 @router.post("/{project_id}/repository", response_model=RepoRead, status_code=status.HTTP_201_CREATED)

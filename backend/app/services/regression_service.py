@@ -19,7 +19,7 @@ from app.models.project import Project
 from app.models.run import ExecutionRun, RunStep
 from app.models.scan import Mutation, ScanJob
 from app.models.test import TestCase
-from app.services.sandbox_service import ExecutionSandboxConfig, SandboxManager
+from app.services.sandbox_service import ExecutionSandboxConfig, JSTSSandboxHarness, SandboxManager
 
 
 class RegressionService:
@@ -164,20 +164,34 @@ def _safe_exit(code=0):
     pass
 sys.exit = _safe_exit
 '''
-        files = {
-            rel_test_path: code_to_run,
-            "test_case.py": code_to_run,
-            "conftest.py": conftest_stub,
-            "tests/conftest.py": conftest_stub,
-        }
-
-        # 4. Determine command
-        cfg = ExecutionSandboxConfig(wall_timeout_seconds=30)
         framework = (test_case.framework or "pytest").lower()
-        if "def test_" in code_to_run or "pytest" in code_to_run or "unittest" in code_to_run or framework in ("pytest", "python"):
-            cmd = [sys.executable, "-m", "pytest", "-v", "--tb=short", rel_test_path]
+        is_jsts = (
+            framework in ("vitest", "jest", "react", "typescript", "javascript")
+            or rel_test_path.endswith((".ts", ".tsx", ".js", ".jsx", ".mjs"))
+            or "from 'vitest'" in code_to_run
+            or 'from "vitest"' in code_to_run
+            or "@jest/globals" in code_to_run
+            or "describe(" in code_to_run
+            or "it(" in code_to_run
+        )
+
+        if is_jsts:
+            clean_test = JSTSSandboxHarness.strip_typescript_types(code_to_run)
+            files = JSTSSandboxHarness.get_harness_files()
+            files[rel_test_path] = code_to_run
+            files["run_test.js"] = clean_test
+
+            cmd = ["node", "run_test.js"]
+            cfg = ExecutionSandboxConfig(wall_timeout_seconds=30, memory_limit_mb=2048)
         else:
-            cmd = [sys.executable, rel_test_path]
+            files = {
+                rel_test_path: code_to_run,
+                "test_case.py": code_to_run,
+                "conftest.py": conftest_stub,
+                "tests/conftest.py": conftest_stub,
+            }
+            cmd = [sys.executable, "-m", "pytest", "-v", "--tb=short", rel_test_path, "-o", "python_files=*.py"]
+            cfg = ExecutionSandboxConfig(wall_timeout_seconds=30)
 
         sandbox_res = await SandboxManager.execute_in_sandbox(
             command=cmd,
@@ -247,7 +261,7 @@ sys.exit = _safe_exit
         step = RunStep(
             execution_run_id=run_record.id,
             organization_id=test_case.organization_id,
-            step_name="sandbox pytest execution",
+            step_name=f"sandbox {framework} execution",
             step_order=1,
             status="passed" if exit_code == 0 else "failed",
             duration_ms=duration_ms,

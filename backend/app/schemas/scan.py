@@ -10,6 +10,8 @@ class ScanJobCreate(BaseModel):
     trigger: str = "manual"
     idempotency_key: Optional[str] = None
     timeout_seconds: Optional[int] = 30
+    runner: Optional[str] = None
+    framework: Optional[str] = None
 
 
 class ScanJobRead(BaseModel):

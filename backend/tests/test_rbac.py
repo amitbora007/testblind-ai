@@ -49,6 +49,15 @@ async def test_rbac_viewer_permission_boundaries(client: AsyncClient, db_session
     assert create_res.status_code == 403
     assert "Insufficient permissions" in create_res.json()["detail"]
 
+    # 3. Viewer CANNOT delete a project (requires Engineer or higher)
+    del_res = await client.delete(
+        f"/api/v1/projects/{uuid.uuid4()}",
+        headers=viewer_headers,
+    )
+    assert del_res.status_code == 403
+    assert "Insufficient permissions" in del_res.json()["detail"]
+
+
 
 @pytest.mark.asyncio
 async def test_rbac_engineer_cannot_invite_members(client: AsyncClient, db_session: AsyncSession, tenant_a):
