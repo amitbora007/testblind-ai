@@ -18,6 +18,10 @@
 
 ---
 
+## Why this project is technically interesting
+
+TestBlind AI separates the control plane from execution of untrusted code. The API coordinates ingestion, analysis, test lifecycle and orchestration, while ephemeral runner containers execute source code and generated tests under constrained permissions. This separation is intended to reduce the blast radius of executing repository code and keeps long-running test work out of the request-handling process.
+
 ## Key Capabilities
 
 ### 1. AI Test Gap Discovery & Mutation Testing
@@ -58,6 +62,16 @@
 
 ---
 
+## Architecture and security boundaries
+
+The architecture is organized around three responsibilities:
+
+1. **Control plane:** FastAPI handles authentication, tenant-aware APIs, orchestration and WebSocket updates.
+2. **Analysis and persistence:** background workers perform mutation analysis and AI-assisted test synthesis; PostgreSQL stores application state, while Redis supports coordination and live execution updates.
+3. **Execution plane:** isolated, short-lived runner containers execute untrusted source and tests with non-root users, read-only root filesystems, disabled network access and resource limits as described by the project configuration.
+
+The diagram below shows the intended service boundaries and the path from a user action to isolated execution.
+
 ## System Architecture
 
 ```mermaid
@@ -96,6 +110,16 @@ flowchart LR
 ```
 
 ---
+
+## Verification and developer workflow
+
+The repository documents a backend pytest suite and provides local commands for migrations, test execution and application startup. Run the suite in your environment before relying on the README's test-count badge; the badge is a snapshot and can become stale as the code changes.
+
+```bash
+pytest backend/tests -v
+```
+
+For a review, start with the architecture and deployment documents, then inspect the runner configuration and tests covering tenancy, authorization, mutation workflows and sandbox boundaries.
 
 ## Canonical Project Documentation
 
