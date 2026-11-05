@@ -49,6 +49,7 @@ class Settings(BaseSettings):
 
     # Archive Upload & Storage Quotas
     UPLOAD_MAX_SIZE_BYTES: int = 100 * 1024 * 1024  # 100 MB
+    STORAGE_BASE_DIR: str = os.getenv("STORAGE_BASE_DIR", str(_backend_dir / "storage" / "tenants"))
 
     # Execution Infrastructure & Sandbox Quotas
     MAX_CONCURRENT_WORKERS: int = 4

@@ -26,6 +26,7 @@ class ScanJob(TimestampedModel):
     trigger: Mapped[str] = mapped_column(String(50), default="manual", nullable=False)
     branch: Mapped[str] = mapped_column(String(100), default="main", nullable=False)
     commit_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    idempotency_key: Mapped[Optional[str]] = mapped_column(String(255), index=True, nullable=True)
     total_mutants: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     killed_mutants: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     surviving_mutants: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

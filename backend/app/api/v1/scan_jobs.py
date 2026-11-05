@@ -38,6 +38,15 @@ from app.services.validation_service import DualStateTestValidator
 router = APIRouter(tags=["Scan Jobs & Mutations"])
 
 
+async def _async_write_file(path: str, content: str) -> None:
+    """Writes text content to path asynchronously on a worker thread to keep the event loop non-blocking."""
+    def _write():
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+    await asyncio.to_thread(_write)
+
+
 async def ensure_project_workspace(
     db: AsyncSession,
     project_id: uuid.UUID,
@@ -88,16 +97,35 @@ async def ensure_project_workspace(
                 shutil.rmtree(target_dir, ignore_errors=True)
             target_dir.mkdir(parents=True, exist_ok=True)
 
+            env = dict(os.environ)
+            env["GIT_TERMINAL_PROMPT"] = "0"
+
             proc = await asyncio.create_subprocess_exec(
                 "git", "clone", "--depth", "1", clone_url, str(target_dir),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=env,
             )
-            stdout, stderr = await proc.communicate()
+            try:
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120.0)
+            except asyncio.TimeoutError:
+                try:
+                    proc.kill()
+                    await proc.wait()
+                except Exception:
+                    pass
+                raise HTTPException(
+                    status_code=status.HTTP_408_REQUEST_TIMEOUT,
+                    detail=f"Git clone operation timed out after 120 seconds for repository '{repo.repo_url}'.",
+                )
+
             if proc.returncode != 0:
+                raw_err = stderr.decode(errors="replace")
+                if access_token:
+                    raw_err = raw_err.replace(access_token, "[REDACTED]")
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Failed to clone GitHub repository from '{repo.repo_url}': {stderr.decode()[:200]}",
+                    detail=f"Failed to clone GitHub repository from '{repo.repo_url}': {raw_err[:200]}",
                 )
             repo.zip_artifact_path = str(target_dir)
             await db.commit()
@@ -123,8 +151,7 @@ async def ensure_project_workspace(
         if is_jsts:
             src_file = os.path.join(workspace_path, f"{safe_name}.ts")
             if not os.path.exists(src_file):
-                with open(src_file, "w", encoding="utf-8") as f:
-                    f.write(f'''export function {safe_name}_compute(value: number, factor: number = 1.5): number {{
+                await _async_write_file(src_file, f'''export function {safe_name}_compute(value: number, factor: number = 1.5): number {{
     if (value <= 0) {{
         throw new Error("Value must be positive");
     }}
@@ -136,8 +163,7 @@ async def ensure_project_workspace(
 ''')
             test_file = os.path.join(tests_dir, f"{safe_name}.test.ts")
             if not os.path.exists(test_file):
-                with open(test_file, "w", encoding="utf-8") as f:
-                    f.write(f'''import {{ describe, it, expect }} from 'vitest';
+                await _async_write_file(test_file, f'''import {{ describe, it, expect }} from 'vitest';
 import {{ {safe_name}_compute }} from '../{safe_name}';
 
 describe('{safe_name} tests', () => {{
@@ -155,8 +181,7 @@ describe('{safe_name} tests', () => {{
         else:
             src_file = os.path.join(workspace_path, f"{safe_name}.py")
             if not os.path.exists(src_file):
-                with open(src_file, "w", encoding="utf-8") as f:
-                    f.write(f'''def {safe_name}_compute(value: float, factor: float = 1.5) -> float:
+                await _async_write_file(src_file, f'''def {safe_name}_compute(value: float, factor: float = 1.5) -> float:
     if value <= 0:
         raise ValueError("Value must be positive")
     if value > 50:
@@ -166,8 +191,7 @@ describe('{safe_name} tests', () => {{
 
             test_file = os.path.join(tests_dir, f"test_{safe_name}.py")
             if not os.path.exists(test_file):
-                with open(test_file, "w", encoding="utf-8") as f:
-                    f.write(f'''import pytest
+                await _async_write_file(test_file, f'''import pytest
 from {safe_name} import {safe_name}_compute
 
 def test_{safe_name}_nominal():
@@ -191,8 +215,7 @@ def test_{safe_name}_invalid():
     if primary_lang == "python":
         conftest_path = os.path.join(tests_dir, "conftest.py")
         if not os.path.exists(conftest_path):
-            with open(conftest_path, "w", encoding="utf-8") as f:
-                f.write('''import sys, os, builtins, types
+            await _async_write_file(conftest_path, '''import sys, os, builtins, types
 from unittest.mock import MagicMock
 from importlib.machinery import ModuleSpec
 
@@ -266,8 +289,7 @@ sys.exit = _safe_exit
                 for c in existing_cases:
                     code_snippet = c.code.replace("import { describe, it, expect } from 'vitest';\n", "").strip()
                     combined += f"\n{code_snippet}\n"
-                with open(test_file_path, "w", encoding="utf-8") as f:
-                    f.write(combined)
+                await _async_write_file(test_file_path, combined)
             else:
                 test_file_path = os.path.join(tests_dir, "test_auto_generated.py")
                 combined = "# ====================================================================\n"
@@ -276,8 +298,7 @@ sys.exit = _safe_exit
                 for c in existing_cases:
                     code_snippet = c.code.replace("import pytest\n", "") if "import pytest" in c.code else c.code
                     combined += f"\n{code_snippet.strip()}\n"
-                with open(test_file_path, "w", encoding="utf-8") as f:
-                    f.write(combined)
+                await _async_write_file(test_file_path, combined)
         else:
             await AutoTestGeneratorService.analyze_and_generate(
                 project_id=project.id,
@@ -299,6 +320,8 @@ async def _run_scan_pipeline(
     commit_hash: Optional[str],
     db: AsyncSession,
     runner: Optional[str] = None,
+    idempotency_key: Optional[str] = None,
+    job_id: Optional[uuid.UUID] = None,
 ) -> ScanJob:
     scan_dir = await ensure_project_workspace(db, project_id, organization_id)
     files_meta = TestDiscoveryService.discover_source_and_test_files(scan_dir)
@@ -335,13 +358,14 @@ async def _run_scan_pipeline(
 
     now = datetime.now(timezone.utc)
     scan_job = ScanJob(
-        id=uuid.uuid4(),
+        id=job_id or uuid.uuid4(),
         project_id=project_id,
         organization_id=organization_id,
         status="completed",
         trigger=trigger,
         branch=branch,
         commit_hash=commit_hash or uuid.uuid4().hex[:8],
+        idempotency_key=idempotency_key,
         total_mutants=summary.total_mutants,
         killed_mutants=summary.killed_mutants,
         surviving_mutants=summary.surviving_mutants,
@@ -434,19 +458,27 @@ async def trigger_scan_job(
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
-    # Idempotency check
+    # Shared DB & memory Idempotency check (Issue 15)
     if data.idempotency_key:
+        db_scan_q = select(ScanJob).where(
+            ScanJob.idempotency_key == data.idempotency_key,
+            ScanJob.organization_id == tenant.organization_id,
+        )
+        existing_scan = (await db.execute(db_scan_q)).scalar_one_or_none()
+        if existing_scan:
+            return ScanJobRead.model_validate(existing_scan)
+
         existing_job_id = queue_engine._idempotency_index.get(data.idempotency_key)
         if existing_job_id:
             try:
                 exist_uuid = uuid.UUID(existing_job_id)
-                existing_scan_q = select(ScanJob).where(
+                q2 = select(ScanJob).where(
                     ScanJob.id == exist_uuid,
                     ScanJob.organization_id == tenant.organization_id,
                 )
-                existing_scan = (await db.execute(existing_scan_q)).scalar_one_or_none()
-                if existing_scan:
-                    return ScanJobRead.model_validate(existing_scan)
+                existing_scan2 = (await db.execute(q2)).scalar_one_or_none()
+                if existing_scan2:
+                    return ScanJobRead.model_validate(existing_scan2)
             except ValueError:
                 pass
 
@@ -458,18 +490,27 @@ async def trigger_scan_job(
         commit_hash=data.commit_hash,
         db=db,
         runner=data.runner or data.framework,
+        idempotency_key=data.idempotency_key,
     )
 
-    # Submit to queue engine for operational fleet tracking
-    await queue_engine.submit_job(
+    # Register actual scan job record in queue engine for fleet status and cancellation
+    from app.services.queue_service import JobRecord
+    job_rec = JobRecord(
         job_id=str(scan_job.id),
         tenant_id=str(tenant.organization_id),
         project_id=str(project_id),
         job_type="scan_job",
-        command=[sys.executable, "-c", "import sys; print('AST mutation scan complete.')"],
+        command=["testblind-mutation-scan", str(project_id)],
+        status=JobStatus.COMPLETED,
         idempotency_key=data.idempotency_key,
         timeout_seconds=data.timeout_seconds or 30,
+        started_at=scan_job.started_at,
+        completed_at=scan_job.completed_at,
+        duration_ms=scan_job.duration_seconds * 1000.0,
     )
+    queue_engine._jobs[str(scan_job.id)] = job_rec
+    if data.idempotency_key:
+        queue_engine._idempotency_index[data.idempotency_key] = str(scan_job.id)
 
     return ScanJobRead.model_validate(scan_job)
 
@@ -496,6 +537,7 @@ async def trigger_scan_job_sync(
         commit_hash=data.commit_hash,
         db=db,
         runner=data.runner or data.framework,
+        idempotency_key=data.idempotency_key,
     )
     return ScanJobRead.model_validate(scan_job)
 

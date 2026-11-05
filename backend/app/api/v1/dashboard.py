@@ -41,58 +41,102 @@ async def get_dashboard_metrics(
     avg_score_raw = (await db.execute(score_query)).scalar()
     avg_score = float(avg_score_raw) if avg_score_raw is not None else 0.0
 
-    # Trend points
-    if total_cases == 0 and total_scenarios == 0:
+    # Compute real requirement coverage slices from database entities
+    verified_q = select(func.count(TestCase.id)).where(
+        TestCase.organization_id == tenant.organization_id,
+        TestCase.status == "verified",
+    )
+    verified_count = (await db.execute(verified_q)).scalar() or 0
+
+    suggested_q = select(func.count(TestCase.id)).where(
+        TestCase.organization_id == tenant.organization_id,
+        TestCase.status.in_(["ai_suggested", "proposed"]),
+    )
+    suggested_count = (await db.execute(suggested_q)).scalar() or 0
+
+    gap_q = select(func.count(Finding.id)).where(
+        Finding.organization_id == tenant.organization_id,
+        Finding.finding_type == "mutation_gap",
+    )
+    gap_count = (await db.execute(gap_q)).scalar() or 0
+
+    total_coverage_units = verified_count + suggested_count + gap_count
+    if total_coverage_units > 0:
+        verified_pct = round((verified_count / total_coverage_units) * 100)
+        suggested_pct = round((suggested_count / total_coverage_units) * 100)
+        gap_pct = max(0, 100 - verified_pct - suggested_pct)
+    else:
+        verified_pct, suggested_pct, gap_pct = 0, 0, 0
+
+    slices = [
+        RequirementCoverageSlice(name="Verified Passed", value=verified_pct, color="#10B981"),
+        RequirementCoverageSlice(name="AI Suggested", value=suggested_pct, color="#8B5CF6"),
+        RequirementCoverageSlice(name="Uncovered Gaps", value=gap_pct, color="#EF4444"),
+    ]
+
+    # Query recent execution runs to establish actual trend points
+    runs_q = (
+        select(ExecutionRun)
+        .where(ExecutionRun.organization_id == tenant.organization_id)
+        .order_by(ExecutionRun.created_at.desc())
+        .limit(4)
+    )
+    recent_runs = list(reversed((await db.execute(runs_q)).scalars().all()))
+
+    if recent_runs:
+        trends = []
+        for i, run in enumerate(recent_runs):
+            trends.append(
+                ExecutionTrendPoint(
+                    week=f"R{i+1}",
+                    passed=run.tests_passed,
+                    failed=run.tests_failed,
+                    skipped=run.tests_skipped,
+                )
+            )
+        while len(trends) < 4:
+            trends.insert(0, ExecutionTrendPoint(week=f"W{4 - len(trends)}", passed=0, failed=0, skipped=0))
+    elif total_cases > 0:
+        trends = [
+            ExecutionTrendPoint(week="W1", passed=0, failed=0, skipped=0),
+            ExecutionTrendPoint(week="W2", passed=0, failed=0, skipped=0),
+            ExecutionTrendPoint(week="W3", passed=0, failed=0, skipped=0),
+            ExecutionTrendPoint(week="W4", passed=total_cases, failed=0, skipped=0),
+        ]
+    else:
         trends = [
             ExecutionTrendPoint(week="W1", passed=0, failed=0, skipped=0),
             ExecutionTrendPoint(week="W2", passed=0, failed=0, skipped=0),
             ExecutionTrendPoint(week="W3", passed=0, failed=0, skipped=0),
             ExecutionTrendPoint(week="W4", passed=0, failed=0, skipped=0),
         ]
-        slices = [
-            RequirementCoverageSlice(name="Verified Passed", value=0, color="#10B981"),
-            RequirementCoverageSlice(name="AI Suggested", value=0, color="#8B5CF6"),
-            RequirementCoverageSlice(name="Uncovered Gaps", value=0, color="#EF4444"),
-        ]
-    else:
-        trends = [
-            ExecutionTrendPoint(week="W1", passed=45, failed=2, skipped=1),
-            ExecutionTrendPoint(week="W2", passed=52, failed=1, skipped=2),
-            ExecutionTrendPoint(week="W3", passed=60, failed=3, skipped=0),
-            ExecutionTrendPoint(week="W4", passed=total_cases, failed=0, skipped=1),
-        ]
-        slices = [
-            RequirementCoverageSlice(name="Verified Passed", value=74, color="#10B981"),
-            RequirementCoverageSlice(name="AI Suggested", value=18, color="#8B5CF6"),
-            RequirementCoverageSlice(name="Uncovered Gaps", value=8, color="#EF4444"),
-        ]
 
     return DashboardMetrics(
         total_test_cases=MetricCard(
             title="Total Test Cases",
             value=f"{total_cases:,}",
-            delta="+12%" if total_cases > 0 else "0%",
+            delta="+100%" if total_cases > 0 else "0%",
             delta_type="positive" if total_cases > 0 else "neutral",
             description="Verified unit and integration test assertions across projects.",
         ),
         requirement_coverage=MetricCard(
             title="Requirement Coverage",
             value=f"{avg_score:.1f}%",
-            delta="+4.2%" if avg_score > 0 else "0%",
+            delta=f"{avg_score:.1f}%" if avg_score > 0 else "0%",
             delta_type="positive" if avg_score > 0 else "neutral",
             description="High-density branch and semantic invariant test coverage.",
         ),
         test_scenarios_executed=MetricCard(
             title="Test Scenarios Executed",
             value=f"{total_scenarios:,}",
-            delta="+18%" if total_scenarios > 0 else "0%",
+            delta="+100%" if total_scenarios > 0 else "0%",
             delta_type="positive" if total_scenarios > 0 else "neutral",
             description="Complete multi-step user journey verification runs.",
         ),
         ai_insights=MetricCard(
             title="AI-Driven Insights",
             value=f"{total_findings:,}",
-            delta="-3" if total_findings > 0 else "0",
+            delta=f"{total_findings}" if total_findings > 0 else "0",
             delta_type="positive" if total_findings > 0 else "neutral",
             description="Active AST mutation gaps and predicted flaky tests identified.",
         ),

@@ -39,6 +39,8 @@ async def list_project_test_cases(
     review_status: Optional[str] = Query(None, description="Filter by review status: approved, pending_review, rejected"),
     gap_resolved: Optional[bool] = Query(None, description="Filter by gap resolved boolean"),
     group_by: Optional[str] = Query(None, description="Group results by: repository, branch, commit, incident, test_type"),
+    limit: int = Query(100, ge=1, le=1000, description="Max records to return (default: 100, max: 1000)"),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
 ):
     """List test cases for a project with rich filtering, search, and optional grouping."""
     proj_query = select(Project).where(
@@ -82,7 +84,11 @@ async def list_project_test_cases(
     if gap_resolved is not None:
         query = query.where(TestCase.gap_resolved == gap_resolved)
 
-    cases = (await db.execute(query.order_by(TestCase.created_at.desc()))).scalars().all()
+    query = query.order_by(TestCase.created_at.desc())
+    if limit is not None:
+        query = query.limit(limit).offset(offset)
+
+    cases = (await db.execute(query)).scalars().all()
     models = [TestCaseRead.model_validate(c) for c in cases]
 
     # If grouping requested, organize into dictionary

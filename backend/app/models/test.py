@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import TimestampedModel
@@ -9,6 +9,9 @@ from app.models.base import TimestampedModel
 
 class TestCase(TimestampedModel):
     __tablename__ = "test_cases"
+    __table_args__ = (
+        Index("ix_test_cases_project_org_created", "project_id", "organization_id", "created_at"),
+    )
 
     project_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

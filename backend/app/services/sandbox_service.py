@@ -275,6 +275,11 @@ class HardenedSubprocessDriver:
                 # Timeout occurred!
                 timed_out = True
                 cls._kill_process_group(pgid)
+                if proc:
+                    try:
+                        await asyncio.wait_for(proc.wait(), timeout=2.0)
+                    except Exception:
+                        pass
                 stdout_str = ""
                 stderr_str = f"Execution timed out: Exceeded {cfg.wall_timeout_seconds}s wall limit."
                 exit_code = 124  # Standard timeout exit code
@@ -282,6 +287,11 @@ class HardenedSubprocessDriver:
                 # Cancellation requested!
                 cancelled = True
                 cls._kill_process_group(pgid)
+                if proc:
+                    try:
+                        await asyncio.wait_for(proc.wait(), timeout=2.0)
+                    except Exception:
+                        pass
                 stdout_str = ""
                 stderr_str = "Execution cancelled by client."
                 exit_code = 130  # Standard SIGINT/cancel exit code
@@ -308,6 +318,12 @@ class HardenedSubprocessDriver:
             stderr_str = f"Sandbox system failure: {str(e)}"
             exit_code = 1
         finally:
+            if proc and proc.returncode is None:
+                cls._kill_process_group(pgid)
+                try:
+                    await asyncio.wait_for(proc.wait(), timeout=1.0)
+                except Exception:
+                    pass
             # Secure workspace cleanup
             shutil.rmtree(temp_dir, ignore_errors=True)
 
